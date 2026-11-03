@@ -997,10 +997,23 @@ durchgesetzt wird — meist in `app/schema.sql`.
 
 ## Lizenz
 
-MIT, siehe `LICENSE`. Die mitgelieferten Schriften Liberation Sans stehen
-unter der SIL Open Font License 1.1 (`app/vorlagen/schriften/OFL.txt`); die
-Python-Abhängigkeiten werden beim Start installiert und tragen ihre eigenen,
-durchweg freizügigen Lizenzen (MIT, BSD, Apache 2.0, PSF).
+MIT-Lizenz mit „Commons Clause“, siehe `LICENSE`. In Kurzform:
+
+- **Erlaubt:** das Werkzeug kostenlos nutzen, auch für das eigene Unternehmen;
+  es kopieren, für sich anpassen und weitergeben, solange der Lizenztext
+  dabeibleibt.
+- **Nicht erlaubt:** es zu verkaufen. Das umfasst den Verkauf als Programm,
+  das Anbieten als bezahlter Online-Dienst und bezahlte Dienstleistungen
+  (Hosting, Beratung, Support), deren Wert im Wesentlichen aus diesem
+  Werkzeug besteht. Wer so etwas vorhat, fragt den Rechteinhaber.
+
+Durch die Commons Clause ist das Werkzeug quelloffen mit Verkaufsverbot und
+damit nicht „Open Source“ im strengen Sinn der Open Source Initiative.
+
+Die mitgelieferten Schriften Liberation Sans stehen unter der SIL Open Font
+License 1.1 (`app/vorlagen/schriften/OFL.txt`); die Python-Abhängigkeiten
+werden beim Start installiert und tragen ihre eigenen, durchweg freizügigen
+Lizenzen (MIT, BSD, Apache 2.0, PSF).
 
 Das Werkzeug ersetzt keine steuerliche Beratung. Wer es einsetzt, bleibt für
 seine Aufzeichnungen und Erklärungen selbst verantwortlich.
