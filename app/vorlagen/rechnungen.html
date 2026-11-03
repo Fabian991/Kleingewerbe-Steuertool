@@ -1,0 +1,128 @@
+{% extends "basis.html" %}
+{% set aktiv = 'rechnungen' %}
+{% block titel %}Rechnungen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Rechnungen</h1>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if hinweis %}<div class="meldung erfolg">{{ hinweis }}</div>{% endif %}
+
+<p class="knopfzeile"><a class="knopf" href="/rechnung/neu">Neue Rechnung</a>
+  <a href="/rechnungen/luecken">Nummernlücken</a></p>
+
+<form method="get" action="/rechnungen" class="zeile">
+  <select name="jahr" aria-label="Jahr">
+    <option value="">alle Jahre</option>
+    {% for j in jahre %}<option value="{{ j }}"
+      {% if filter.jahr == j %}selected{% endif %}>{{ j }}</option>{% endfor %}
+  </select>
+  <select name="kunde" aria-label="Kunde">
+    <option value="">alle Kunden</option>
+    {% for k in kunden %}<option value="{{ k.id }}"
+      {% if filter.kunde == k.id %}selected{% endif %}>{{ k.name }}
+      {%- if k.doppelt %} ({{ k.kundennummer }}, {{ k.ort }}){% endif %}</option>{% endfor %}
+  </select>
+  <button type="submit">Filtern</button>
+</form>
+
+{# Verbrauchte Nummern ohne gueltige Rechnung -- mit dem Grund aus dem
+   Journal, wo es einen gibt (zurueckgenommene Rechnung). #}
+{% if luecken %}
+<div class="meldung warn">
+  <strong>Nummernlücken in {{ filter.jahr }}:</strong>
+  <ul>{% for l in luecken %}
+    <li><code>{{ l.nummer }}</code> —
+      {% if l.grund %}{{ l.grund }}
+      <span class="gedaempft">(zurückgenommen am {{ (l.vermerkt_am | zeit_lokal)[:10] }})</span>
+      {%- else %}<span class="gedaempft">ohne Vermerk im Protokoll</span>{% endif %}</li>
+  {% endfor %}</ul>
+  <p>Eine lückenlose Folge ist nicht vorgeschrieben (FG Köln, 15 K 1122/16), in einer
+    Betriebsprüfung aber erklärungsbedürftig. <a href="/rechnungen/luecken">Alle Jahre</a></p>
+</div>
+{% endif %}
+
+{% if rechnungen %}
+<table class="rechnungsliste">
+  <thead><tr><th>Nummer</th><th>Kunde</th><th>Datum</th><th>Fällig</th>
+    <th class="zahl">Betrag</th><th class="zahl">Offen</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rechnungen %}
+    <tr>
+      <td class="mono"><a href="/rechnung/{{ r.id }}">{{ r.nummer or 'Entwurf' }}</a></td>
+      <td>{{ r.kunde }}</td>
+      <td class="mono datum">{{ r.datum | datum_de }}</td>
+      {# Eine stornierte Rechnung ist weder faellig noch offen. Steht noch
+         Geld des Kunden im Haus, ist DAS die offene Sache: die Rueckzahlung.
+         Ein Entwurf ebenso wenig: er fordert noch nichts -- die Uebersicht
+         zaehlt ihn nicht als offen, und die Liste sagte "135,00 € offen". #}
+      <td class="mono datum">{% if r.dokumentstatus in ('STORNIERT', 'ENTWURF') %}—
+        {%- elif r.typ == 'RECHNUNG' and r.brutto_cent > 0 %}
+        {{ r.faellig_am | datum_de }}{% else %}—{% endif %}</td>
+      <td class="zahl mono">{{ r.brutto_cent | euro }} €</td>
+      <td class="zahl mono">{% if r.dokumentstatus == 'ENTWURF' %}—
+        {%- elif r.dokumentstatus == 'STORNIERT' %}
+        {%- if r.bezahlt_cent > 0 %}<span class="offen-art">Rückzahlung offen</span>
+          {{ r.bezahlt_cent | euro }} €{% else %}—{% endif %}
+        {%- elif r.offen_cent < 0 and r.typ == 'RECHNUNG' %}
+        {#- Ueberzahlung beim Namen nennen, nicht "-220,00 €". #}
+        überzahlt {{ (-r.offen_cent) | euro }} €
+        {%- elif r.offen_cent and r.typ == 'RECHNUNG' %}
+        {{ r.offen_cent | euro }} €{% else %}—{% endif %}</td>
+      <td><span class="chip {{ r.chip | lower }}">{{ r.chip | status_text }}</span>
+        {%- if r.ueberfaellig and r.chip != 'UEBERFAELLIG' %}
+        <span class="chip ueberfaellig">{{ r.tage_ueber_faellig }} T</span>{% endif %}</td>
+      {# Rechnungsablauf: die haeufigen Schritte direkt in der Zeile, je als
+         aufklappbares Formular -- "bezahlt" nie als Ein-Klick ohne Datum.
+         Untereinander und je Zeile nur eines offen (name): nebeneinander
+         zogen zwei offene Formulare die Tabelle ueber die Seite hinaus. #}
+      <td class="aktionen">{% if r.pdf_da %}<a href="/rechnung/{{ r.id }}/pdf">PDF</a>{% endif %}
+        {% if r.dokumentstatus == 'ENTWURF' %}
+        <details>
+          <summary>Löschen</summary>
+          <form method="post" action="/rechnung/{{ r.id }}/verwerfen">
+            <input type="hidden" name="zurueck" value="{{ zurueck }}">
+            <p class="hinweis">Ein Entwurf hat noch keine Nummer; Löschen hinterlässt keine
+              Lücke. Seine Zeiten werden wieder frei.</p>
+            <button type="submit" class="still">Ja, Entwurf löschen</button>
+          </form>
+        </details>
+        {% elif r.dokumentstatus == 'FESTGESCHRIEBEN' %}
+        {% if r.typ == 'RECHNUNG' and r.brutto_cent > 0 and r.offen_cent > 0 %}
+        <details name="aktion-{{ r.id }}">
+          <summary>Bezahlt …</summary>
+          <form method="post" action="/rechnung/{{ r.id }}/zahlung">
+            <input type="hidden" name="zurueck" value="{{ zurueck }}">
+            <input type="hidden" name="erwartet_bezahlt" value="{{ r.bezahlt_cent }}">
+            <label>Geldeingang am <input name="datum" type="date" value="{{ heute }}" required></label>
+            <label>Betrag in € <input name="betrag_euro" placeholder="{{ r.offen_cent | euro }}"
+              size="10"><small>leer = offener Rest</small></label>
+            <label>Art <select name="art">{% for a in zahlungsarten %}
+              <option value="{{ a }}">{{ a | status_text }}</option>{% endfor %}</select></label>
+            <button type="submit">Als bezahlt erfassen</button>
+          </form>
+        </details>
+        {% endif %}
+        {% if not r.versendet_am %}
+        <details name="aktion-{{ r.id }}">
+          <summary>Versendet …</summary>
+          <form method="post" action="/rechnung/{{ r.id }}/versendet">
+            <input type="hidden" name="zurueck" value="{{ zurueck }}">
+            <label>Versendet am <input name="datum" type="date" value="{{ heute }}" required></label>
+            <button type="submit">Vermerken</button>
+          </form>
+        </details>
+        {% endif %}
+        {% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if rechnungen | selectattr('dokumentstatus', 'equalto', 'FESTGESCHRIEBEN')
+      | selectattr('offen_cent', 'gt', 0) | list %}
+<p class="hinweis">„Bezahlt …“ erfasst den Geldeingang: der Status folgt aus der Zahlung, und ihr
+  Datum zählt für EÜR (§ 11 EStG) und § 19-Umsatz.</p>
+{% endif %}
+{% else %}
+<p class="leer">Noch keine Rechnungen. <a href="/rechnung/neu">Erste Rechnung erstellen</a></p>
+{% endif %}
+{% endblock %}

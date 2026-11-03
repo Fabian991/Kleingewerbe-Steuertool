@@ -1,0 +1,186 @@
+{
+  "_hinweis": [
+    "Jahresabhaengige Werte fuer die Steuerruecklage (app/logik/steuertarif.py).",
+    "Wie pauschalen.json: sie gehoeren in eine versionierte Datei und NICHT in den",
+    "Code. Ein Jahr ohne eigenen Eintrag faellt auf das naechstliegende bekannte",
+    "zurueck UND sagt das -- die Seite zeigt den Hinweis neben dem Ergebnis.",
+    "",
+    "Saetze und Koeffizienten stehen als Text (\"954.80\"), nicht als Zahl: sie",
+    "werden exakt gelesen (fractions.Fraction), eine Gleitkommazahl haette schon",
+    "beim Einlesen Rundungsfehler.",
+    "",
+    "status: 'gesetz' = verkuendetes Recht; 'fortgeltung' = kein eigenes Gesetz,",
+    "das geltende gilt weiter (Eintrag mit 'wie'); 'entwurf' = Regierungsentwurf,",
+    "kein Recht -- nur als zuschaltbare, gekennzeichnete Variante.",
+    "",
+    "Rechtsstand und Quellen: Gegenpruefung vom 25.10.2026 (amtliche BGBl.-PDF",
+    "von recht.bund.de, BT-Drucksachen, BMF-Programmablaufplaene, BMF-Rechner).",
+    "Nach jeder Verkuendung im BGBl. neu pruefen, vor allem den Tarif 2027."
+  ],
+  "rechtsstand": "2026-10-25",
+
+  "tarif": {
+    "2024": {
+      "status": "gesetz",
+      "quelle": "§ 32a Abs. 1 EStG i. d. F. BGBl. 2024 I Nr. 386 Art. 1 Nr. 2 (rückwirkend für 2024)",
+      "zonen": [
+        {"bis": 11784, "art": "null"},
+        {"bis": 17005, "art": "y", "a": "954.80", "basis": 11784},
+        {"bis": 66760, "art": "z", "b": "181.19", "basis": 17005, "c": "991.21"},
+        {"bis": 277825, "art": "linear", "satz": "0.42", "abzug": "10636.31"},
+        {"bis": null, "art": "linear", "satz": "0.45", "abzug": "18971.06"}
+      ]
+    },
+    "2025": {
+      "status": "gesetz",
+      "quelle": "§ 32a Abs. 1 EStG i. d. F. BGBl. 2024 I Nr. 449 Art. 1 Nr. 2; identisch im BMF-Programmablaufplan 2025",
+      "zonen": [
+        {"bis": 12096, "art": "null"},
+        {"bis": 17443, "art": "y", "a": "932.30", "basis": 12096},
+        {"bis": 68480, "art": "z", "b": "176.64", "basis": 17443, "c": "1015.13"},
+        {"bis": 277825, "art": "linear", "satz": "0.42", "abzug": "10911.92"},
+        {"bis": null, "art": "linear", "satz": "0.45", "abzug": "19246.67"}
+      ]
+    },
+    "2026": {
+      "status": "gesetz",
+      "quelle": "§ 32a Abs. 1 EStG i. d. F. BGBl. 2024 I Nr. 449 Art. 2 Nr. 2; identisch im BMF-Programmablaufplan 2026",
+      "zonen": [
+        {"bis": 12348, "art": "null"},
+        {"bis": 17799, "art": "y", "a": "914.51", "basis": 12348},
+        {"bis": 69878, "art": "z", "b": "173.10", "basis": 17799, "c": "1034.87"},
+        {"bis": 277825, "art": "linear", "satz": "0.42", "abzug": "11135.63"},
+        {"bis": null, "art": "linear", "satz": "0.45", "abzug": "19470.38"}
+      ]
+    },
+    "2027": {
+      "status": "fortgeltung",
+      "wie": 2026,
+      "quelle": "Kein neuer Tarif verkündet (Stand 25.10.2026); § 32a Abs. 1 EStG gilt „ab dem Veranlagungszeitraum 2026“ fort"
+    }
+  },
+
+  "tarif_entwurf": {
+    "2027": {
+      "status": "entwurf",
+      "kurz": "BT-Drs. 21/8235",
+      "quelle": "Regierungsentwurf Einkommensteuerreformgesetz 2027, BT-Drs. 21/8235 vom 28.09.2026, Art. 1 Nr. 4 (1. Lesung 08.10.2026, Anhörung 04.11.2026)",
+      "zonen": [
+        {"bis": 12564, "art": "null"},
+        {"bis": 17799, "art": "y", "a": "952.24", "basis": 12564},
+        {"bis": 70600, "art": "z", "b": "170.74", "basis": 17799, "c": "993.86"},
+        {"bis": 249999, "art": "linear", "satz": "0.42", "abzug": "11241.73"},
+        {"bis": 279999, "art": "linear", "satz": "0.45", "abzug": "18741.70"},
+        {"bis": null, "art": "linear", "satz": "0.47", "abzug": "24341.68"}
+      ]
+    },
+    "2028": {
+      "status": "entwurf",
+      "kurz": "BT-Drs. 21/8235",
+      "quelle": "Regierungsentwurf Einkommensteuerreformgesetz 2027, BT-Drs. 21/8235 vom 28.09.2026, Art. 2 Nr. 2",
+      "zonen": [
+        {"bis": 12900, "art": "null"},
+        {"bis": 17799, "art": "y", "a": "1017.55", "basis": 12900},
+        {"bis": 70600, "art": "z", "b": "170.74", "basis": 17799, "c": "930.08"},
+        {"bis": 249999, "art": "linear", "satz": "0.42", "abzug": "11305.52"},
+        {"bis": 279999, "art": "linear", "satz": "0.45", "abzug": "18805.49"},
+        {"bis": null, "art": "linear", "satz": "0.47", "abzug": "24405.47"}
+      ]
+    }
+  },
+
+  "soli": {
+    "_hinweis": "§ 3 Abs. 3, § 4 SolZG: Freigrenze, kein Freibetrag; darüber 5,5 %, höchstens 11,9 % des Betrags über der Freigrenze; Bruchteile eines Cents bleiben außer Ansatz.",
+    "satz": "0.055",
+    "milderung": "0.119",
+    "freigrenze": {
+      "2024": {"einzel": 18130, "zusammen": 36260, "status": "gesetz",
+               "quelle": "§ 3 Abs. 3 SolZG (Altwert laut BGBl. 2024 I Nr. 449 Art. 3); BMF-Rechner 2024"},
+      "2025": {"einzel": 19950, "zusammen": 39900, "status": "gesetz",
+               "quelle": "§ 3 Abs. 3 SolZG i. d. F. BGBl. 2024 I Nr. 449 Art. 3; BMF-Programmablaufplan 2025"},
+      "2026": {"einzel": 20350, "zusammen": 40700, "status": "gesetz",
+               "quelle": "§ 3 Abs. 3 SolZG i. d. F. BGBl. 2024 I Nr. 449 Art. 4; BMF-Programmablaufplan 2026"},
+      "2027": {"einzel": 20350, "zusammen": 40700, "status": "fortgeltung",
+               "quelle": "Fortgeltung des Werts 2026; kein Entwurf ändert das SolZG (Stand 25.10.2026)"}
+    }
+  },
+
+  "kirchensteuer": {
+    "_hinweis": "§ 51a EStG: Bemessung ist die Einkommensteuer VOR der Gewerbesteuer-Anrechnung nach § 35 (§ 51a Abs. 2 Satz 3). Kappung und Kirchgeld sind nicht hinterlegt.",
+    "saetze_prozent": [8, 9],
+    "belegt_bis": 2026,
+    "quelle": "8 % in Bayern und Baden-Württemberg, 9 % in den übrigen Ländern (EKD-Statistik, service.berlin.de); belegt für 2024–2026"
+  },
+
+  "gewerbesteuer": {
+    "_hinweis": "§ 11 GewStG: Gewerbeertrag auf volle 100 € abrunden, Freibetrag 24.500 € (natürliche Personen), Messzahl 3,5 %. § 35 EStG: Anrechnung höchstens 4,0 × Messbetrag. Nur für Gewerbebetriebe, nicht für Freiberufler.",
+    "freibetrag_euro": 24500,
+    "abrunden_auf_euro": 100,
+    "messzahl": "0.035",
+    "anrechnung_faktor": "4.0",
+    "hebesatz_vorschlag": 410,
+    "hebesatz_vorschlag_quelle": "Durchschnittlicher Hebesatz 2025: 410 % (Destatis, Pressemitteilung Nr. 369 vom 15.10.2026)",
+    "hebesatz_hoechstens": 1000,
+    "mindesthebesatz": {
+      "2024": 200,
+      "2025": 200,
+      "2026": 200,
+      "2027": 280
+    },
+    "mindesthebesatz_quelle": "§ 16 Abs. 4 Satz 2 GewStG; 280 % ab 2027 laut BGBl. 2026 I Nr. 197 Art. 8"
+  },
+
+  "lohn": {
+    "_hinweis": [
+      "Naeherung Bruttolohn -> zu versteuerndes Einkommen fuer gesetzlich",
+      "krankenversicherte Arbeitnehmer mit Krankengeldanspruch, ohne hoehere",
+      "Werbungskosten, kinderlos, ausserhalb Sachsens, mit dem durchschnittlichen",
+      "Zusatzbeitrag. Werte 2027 sind noch Entwurf oder Prognose und deshalb",
+      "nicht hinterlegt: 2027 rechnet mit 2026 und sagt das."
+    ],
+    "2025": {
+      "status": "gesetz",
+      "quelle": "§ 9a, § 10, § 10c EStG; Rechengrößen BGBl. 2024 I Nr. 365; BMF-Programmablaufplan 2025",
+      "arbeitnehmer_pauschbetrag": 1230,
+      "sonderausgaben_pauschbetrag_einzel": 36,
+      "sonderausgaben_pauschbetrag_zusammen": 72,
+      "hoechstbetrag_sonstige_vorsorge": 1900,
+      "bbg_rv_alv": 96600,
+      "bbg_kv_pv": 66150,
+      "rv_an": "0.093",
+      "alv_an": "0.013",
+      "kv_an": "0.073",
+      "zusatzbeitrag_prozent": "2.5",
+      "pv_an": "0.018",
+      "pv_kinderlos": "0.006",
+      "krankengeld_abschlag": "0.04"
+    },
+    "2026": {
+      "status": "gesetz",
+      "quelle": "§ 9a, § 10, § 10c EStG; Rechengrößen BGBl. 2025 I Nr. 278; Zusatzbeitrag BAnz AT 10.11.2025 B7; BMF-Programmablaufplan 2026",
+      "arbeitnehmer_pauschbetrag": 1230,
+      "sonderausgaben_pauschbetrag_einzel": 36,
+      "sonderausgaben_pauschbetrag_zusammen": 72,
+      "hoechstbetrag_sonstige_vorsorge": 1900,
+      "bbg_rv_alv": 101400,
+      "bbg_kv_pv": 69750,
+      "rv_an": "0.093",
+      "alv_an": "0.013",
+      "kv_an": "0.073",
+      "zusatzbeitrag_prozent": "2.9",
+      "pv_an": "0.018",
+      "pv_kinderlos": "0.006",
+      "krankengeld_abschlag": "0.04"
+    }
+  },
+
+  "veranlagung": {
+    "_hinweis": "§ 46 Abs. 2 Nr. 1, Abs. 3 und 5 EStG, § 70 EStDV; § 37 Abs. 1 und 5 EStG; § 19 Abs. 1 und 5 GewStG",
+    "pflicht_ueber_euro": 410,
+    "haerteausgleich_voll_bis_euro": 410,
+    "haerteausgleich_gleitend_bis_euro": 820,
+    "vorauszahlung_est_mindestens_jahr_euro": 400,
+    "vorauszahlung_est_mindestens_termin_euro": 100,
+    "vorauszahlung_gewst_mindestens_euro": 50
+  }
+}

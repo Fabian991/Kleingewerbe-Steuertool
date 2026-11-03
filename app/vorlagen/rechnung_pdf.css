@@ -1,0 +1,361 @@
+/* Rechnungslayout nach DIN 5008 Form B.
+ *
+ * Die wichtigste Regel steht in der Vorlage: nur die Bloecke IM Briefkopf sind
+ * absolut positioniert, der Rest laeuft im normalen Fluss. Ein absolut
+ * positionierter Block paginiert in WeasyPrint nicht -- bei einer Rechnung mit
+ * 60 Positionen wuerde der Rest lautlos verschwinden.
+ *
+ * Die erste Seite hat oben keinen Rand, damit alle Masse im Briefkopf von der
+ * Papierkante aus gelten. Der Briefkopf ist 98 mm hoch, danach beginnt der
+ * Text -- das ist die Betreffzeilenhoehe nach Form B. Folgeseiten bekommen
+ * einen normalen oberen Rand.
+ *
+ * Linker Rand 25 mm: das ist zugleich die Textkante im Anschriftfeld (Feld ab
+ * 20 mm, 5 mm Innenabstand). Rechter Rand 20 mm: dort endet der
+ * Informationsblock, der bei 125 mm beginnt.
+ */
+
+/* Die Schrift reist im Projekt mit (app/vorlagen/schriften/, Herkunft und
+ * Lizenz dort). Eine Systemschrift waere der falsche Anker: eine Rechnung ist
+ * zehn Jahre aufbewahrungspflichtig, und fehlt die Schrift, setzt WeasyPrint
+ * still auf eine Ersatzschrift um -- andere Laufweite, andere Umbrueche, im
+ * schlimmsten Fall ein Anschriftfeld, das nicht mehr im Fensterbereich sitzt.
+ * Eine spaeter erzeugte Kopie soll aussehen wie die versendete Rechnung.
+ *
+ * Liberation Sans ist metrisch kompatibel mit Arial -- derselbe Vorschub je
+ * Zeichen, dieselben Umbrueche. Die bisherigen Rechnungen sind in Arial 11 pt
+ * gesetzt; die neuen sehen damit aus wie die alten. Das ist beim Umstieg kein
+ * Schoenheitsargument: der Kunde soll die Rechnung wiedererkennen. */
+@font-face {
+    font-family: "Liberation Sans";
+    src: url("schriften/LiberationSans-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: "Liberation Sans";
+    src: url("schriften/LiberationSans-Bold.ttf") format("truetype");
+    font-weight: 700;
+    font-style: normal;
+}
+@font-face {
+    font-family: "Liberation Sans";
+    src: url("schriften/LiberationSans-Italic.ttf") format("truetype");
+    font-weight: 400;
+    font-style: italic;
+}
+
+@page {
+    size: A4;
+    /* Unten Platz fuer die dreispaltige Fusszeile UND darunter den
+       Seitenzaehler. Beide teilen sich keine Zeile mehr: der Zaehler stand
+       frueher auf der Hoehe der Fusszeile und ueberdruckte deren Ende. */
+    margin: 20mm 20mm 34mm 25mm;
+
+    @bottom-right {
+        content: "Seite " counter(page) " von " counter(pages);
+        font-size: 7pt;
+        color: #666;
+        vertical-align: bottom;
+        /* Gut 7 mm ueber der Papierkante: weiter unten schneiden viele
+           Drucker ab. */
+        padding-bottom: 7mm;
+    }
+}
+
+@page :first {
+    margin-top: 0;
+}
+
+:root {
+    --text: #16160f;
+    --gedaempft: #5a5a52;
+    --linie: #c8c8c0;
+}
+
+html {
+    /* Die mitgelieferte Schrift zuerst. Die uebrigen sind nur die Notbremse,
+     * falls die Datei fehlt -- dann soll das PDF trotzdem entstehen. */
+    font-family: "Liberation Sans", Arial, "Helvetica Neue", Helvetica, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.45;
+    color: var(--text);
+}
+
+body { margin: 0; }
+
+.nowrap { white-space: nowrap; }
+.platzhalter { font-style: italic; color: var(--gedaempft); }
+
+/* -------------------------------------------------------------- Briefkopf */
+
+.briefkopf {
+    position: relative;
+    height: 98mm;          /* Betreffzeile nach DIN 5008 Form B */
+}
+
+/* Kopfbereich 0 bis 45 mm. Links der Name, gross und umbrechend -- frueher
+   stand hier nichts, und der eigene Name kam nur abgeschnitten in der
+   Absenderzeile vor. Rechts Anschrift und Kontakt. */
+.kopf-name {
+    position: absolute;
+    top: 15mm;
+    left: 0;
+    width: 98mm;
+    font-size: 16pt;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+/* Ein langer Name wird kleiner (rechnungsdruck.namensgroesse), damit er vor
+   der Zusatz- und Vermerkzone (45 mm) endet: vorher lief er ab etwa 140
+   Zeichen in die Ruecksendeangabe, die von unten nach oben waechst. */
+.kopf-name.lang { font-size: 13pt; }
+.kopf-name.sehr-lang { font-size: 10pt; line-height: 1.25; }
+
+.kopf-kontakt {
+    position: absolute;
+    top: 15mm;
+    right: 0;
+    width: 62mm;
+    text-align: right;
+    font-size: 8.5pt;
+    line-height: 1.4;
+    color: var(--gedaempft);
+    overflow-wrap: anywhere;
+}
+.kopf-kontakt .logo { max-height: 14mm; max-width: 60mm; margin-bottom: 2mm; }
+
+/* Ruecksendeangabe: unten in der Zusatz- und Vermerkzone (45 bis 62,7 mm),
+   also im Fenster. Ueber "bottom" verankert -- Unterkante bei 61,7 mm
+   (98 - 36,3) --, damit eine zweite Zeile nach OBEN waechst und die
+   Anschrift nie beruehrt. Kein nowrap, kein overflow: hidden. */
+.ruecksendeangabe {
+    position: absolute;
+    bottom: 36.3mm;
+    left: 0;
+    width: 80mm;
+    font-size: 7pt;
+    line-height: 1.25;
+    color: var(--gedaempft);
+    border-bottom: 0.2mm solid var(--linie);
+    padding-bottom: 0.6mm;
+}
+/* Zu lang fuer eine Zeile in 7 pt (rechnungsdruck.RUECKSENDE_EINZEILIG):
+   kleiner, und wenn es dann noch nicht reicht, ein sauberer Umbruch --
+   zwischen den Teilen, nie zwischen PLZ und Ort. Nur der Name selbst darf in
+   sich umbrechen; ein sehr langer Name liefe sonst ueber das Fenster. */
+.ruecksendeangabe.lang { font-size: 6.5pt; }
+.ruecksendeangabe .teil { white-space: nowrap; }
+.ruecksendeangabe .teil:first-child { white-space: normal; }
+
+/* Anschriftzone 62,7 bis 90 mm: 27,3 mm, sechs Zeilen in 10 pt. */
+.anschriftfeld {
+    position: absolute;
+    top: 62.7mm;
+    left: 0;
+    width: 80mm;
+    height: 27.3mm;
+    font-size: 10pt;
+    line-height: 1.25;
+}
+
+/* Informationsblock nach Form B: ab 50 mm von oben, ab 125 mm von links. */
+.infoblock {
+    position: absolute;
+    top: 50mm;
+    right: 0;
+    width: 65mm;
+    font-size: 8.5pt;
+}
+
+.infoblock table { width: 100%; border-collapse: collapse; }
+.infoblock th {
+    text-align: left;
+    font-weight: 400;
+    color: var(--gedaempft);
+    padding: 0.3mm 2mm 0.3mm 0;
+    white-space: nowrap;
+    vertical-align: top;
+}
+.infoblock td { text-align: right; vertical-align: top; }
+
+/* Falzmarken (105 und 210 mm) und Lochmarke (148,5 mm) an der PAPIERkante:
+   der Briefkopf beginnt an der Textkante 25 mm vom Rand, also -25 mm. Nur
+   auf Seite 1, denn sie haengen am Briefkopf -- als position: fixed lagen
+   sie an der Textkante und auf Folgeseiten mitten in der Positionsspalte. */
+.marke {
+    position: absolute;
+    left: -25mm;
+    width: 6mm;
+    border-top: 0.25mm solid var(--gedaempft);
+}
+.falz-oben  { top: 105mm; }
+.lochmarke  { top: 148.5mm; width: 9mm; }
+.falz-unten { top: 210mm; }
+
+/* ------------------------------------------------------------------ Text */
+
+h1 {
+    font-size: 13pt;
+    margin: 0 0 1.5mm;
+}
+
+h2 { font-size: 10.5pt; margin: 8mm 0 2mm; }
+
+/* Die Betreffzeile steht unter der Ueberschrift, die schon "Rechnung"
+   heisst -- deshalb normal gesetzt und nicht ein zweites Mal fett. */
+.betreff {
+    color: var(--gedaempft);
+    margin: 0 0 4mm;
+}
+
+/* Schlusstext und Einleitung tragen oft eine Aufstellung, der Untertext einer
+   Position eine mehrzeilige Beschreibung. Ohne pre-line kollabierten die
+   Zeilenumbrueche zu einem Fliesstext -- aus einer Liste wuerde ein Absatz. */
+.schluss, .einleitung, .untertext { white-space: pre-line; }
+
+p { margin: 0 0 3mm; }
+
+p.bezug { color: var(--gedaempft); }
+
+/* ------------------------------------------------------------ Positionen */
+
+table.positionen {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4mm 0 3mm;
+    /* Die Spaltenbreiten haelt die Tabelle, nicht der Inhalt: ein langer
+       Titel ohne Leerzeichen (eine URL, ein Dateiname) schob sonst
+       Einzelpreis und Betrag ueber die Papierkante hinaus. */
+    table-layout: fixed;
+}
+
+table.positionen td.text {
+    overflow-wrap: anywhere;
+}
+table.positionen th.nr, table.positionen td.nr { width: 8mm; }
+table.positionen th.einheit, table.positionen td.einheit { width: 16mm; }
+table.positionen th.zahl, table.positionen td.zahl { width: 22mm; }
+/* Im Einzelnachweis: das Datum schmal, damit die Beschreibung die Breite
+   bekommt -- sonst teilte die feste Tabelle die Spalten gleich auf. */
+table.positionen th.datum, table.positionen td.datum { width: 24mm; }
+
+table.positionen thead th {
+    font-size: 8pt;
+    font-weight: 600;
+    text-align: left;
+    color: var(--gedaempft);
+    border-bottom: 0.3mm solid var(--text);
+    padding: 1mm 1.5mm;
+}
+
+/* Der Kopf wiederholt sich auf jeder Folgeseite -- sonst ist eine mehrseitige
+ * Positionsliste nicht lesbar. Der Fuss dagegen NICHT: als table-footer-group
+ * druckte WeasyPrint "Gesamtbetrag 4.600,00 €" unten auf jede Seite, auch
+ * unter eine einzige Position -- lesbar als Seitensumme. Als normale
+ * Zeilengruppe steht er genau einmal, am Ende der Tabelle. */
+table.positionen thead { display: table-header-group; }
+table.positionen tfoot { display: table-row-group; }
+/* Eine gewoehnliche Zeile bleibt zusammen. Eine Zeile mit langem Text
+ * (Klasse "lang", gesetzt in der Vorlage) darf brechen: passt sie auf keine
+ * Seite, schob "avoid" sie auf die naechste und liess eine Seite mit nur der
+ * Ueberschrift zurueck -- und der Tabellenkopf fehlte danach. Waisen- und
+ * Hurenkinderregel: beim Bruch bleiben mindestens drei Zeilen beisammen. */
+table.positionen tr { page-break-inside: avoid; }
+table.positionen tr.lang { page-break-inside: auto; }
+
+table.positionen td {
+    padding: 1.4mm 1.5mm;
+    border-bottom: 0.2mm solid var(--linie);
+    vertical-align: top;
+    orphans: 3;
+    widows: 3;
+}
+
+table.positionen .nr      { width: 8mm; color: var(--gedaempft); }
+table.positionen .zahl    { text-align: right; white-space: nowrap; }
+table.positionen .einheit { width: 16mm; }
+table.positionen thead .zahl { text-align: right; }
+
+.untertext { font-size: 8.5pt; color: var(--gedaempft); margin-top: 0.5mm; }
+.untertext.kulanz { font-style: italic; }
+
+tr.summe td {
+    font-weight: 600;
+    border-top: 0.4mm solid var(--text);
+    border-bottom: none;
+    padding-top: 2mm;
+}
+tr.summe td:first-child { text-align: right; }
+
+/* ---------------------------------------------------------------- Schluss */
+
+.hinweis-19 {
+    margin: 4mm 0;
+    padding: 2mm 3mm;
+    background: #f4f4ef;
+    font-size: 9.5pt;
+}
+
+p.klein, .klein { font-size: 8.5pt; color: var(--gedaempft); }
+
+/* Zahlungsblock: der Satz, darunter die Bankverbindung als Tabelle, jede
+   Angabe in EINER Zeile -- die IBAN in Vierergruppen zum Abschreiben und
+   Kopieren. Der Block bricht nicht ueber den Seitenwechsel. */
+.zahlung { margin-top: 5mm; page-break-inside: avoid; }
+.zahlung p { margin-bottom: 1.5mm; }
+table.konto { border-collapse: collapse; margin: 0 0 3mm; }
+table.konto th {
+    text-align: left;
+    font-weight: 400;
+    color: var(--gedaempft);
+    padding: 0.4mm 6mm 0.4mm 0;
+    white-space: nowrap;
+    vertical-align: top;
+}
+table.konto td { padding: 0.4mm 0; vertical-align: top; }
+
+/* Der Einzelnachweis ist eine Anlage und beginnt auf einer eigenen Seite.
+   Die Ueberschrift bleibt bei der Tabelle -- sie steht nie allein. */
+.nachweis { page-break-before: always; }
+.nachweis h2 { margin-top: 0; page-break-after: avoid; }
+
+/* ------------------------------------------------- Fusszeile, dreispaltig */
+
+/* Unterkante 21 mm unter dem Textbereich, also bei 284 mm -- darunter steht
+   der Seitenzaehler. Platz nach oben fuer fuenf Zeilen. */
+footer.fuss {
+    position: fixed;
+    bottom: -21mm;
+    left: 0;
+    right: 0;
+    font-size: 7.5pt;
+    line-height: 1.35;
+    color: var(--gedaempft);
+    border-top: 0.2mm solid var(--linie);
+    padding-top: 1.5mm;
+}
+footer.fuss table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+footer.fuss td { vertical-align: top; padding: 0 3mm 0 0; }
+footer.fuss td.spalte-wer     { width: 54mm; }
+footer.fuss td.spalte-kontakt { width: 50mm; }
+footer.fuss td.spalte-bank    { padding-right: 0; }
+footer.fuss .umbruch { overflow-wrap: anywhere; }
+
+/* ------------------------------------------------- Vorschau-Wasserzeichen */
+
+/* Nur in der Vorschau eines Entwurfs. Feststehend, also auf jeder Seite;
+   blass genug, dass der Text darunter lesbar bleibt. */
+.wasserzeichen {
+    position: fixed;
+    top: 125mm;
+    left: -25mm;
+    width: 210mm;
+    text-align: center;
+    white-space: nowrap;
+    font-size: 40pt;
+    font-weight: 700;
+    color: rgba(190, 30, 30, 0.14);
+    transform: rotate(-32deg);
+}

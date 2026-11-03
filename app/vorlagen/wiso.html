@@ -1,0 +1,75 @@
+{% extends "basis.html" %}
+{% set aktiv = 'wiso' %}
+{% block titel %}WISO-Import · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Import aus WISO Steuer</h1>
+<p class="hinweis">Für den Parallelbetrieb: den Export „Buchungen“ aus WISO immer wieder
+  einspielen. Das Tool gleicht ab, was es schon hat, und übernimmt nur das Neue — was in
+  WISO geändert oder gelöscht wurde, zeigt die Vorschau zur Entscheidung. Nichts wird still
+  überschrieben.</p>
+
+{% if fehler %}<div class="meldung fehler" role="alert">{{ fehler }}</div>{% endif %}
+{% if warnung %}<div class="meldung warn" role="status">{{ warnung }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg" role="status" id="ergebnis">{{ erfolg }}
+  {%- if ergebnis and ergebnis.hinweise %}
+  <ul>{% for h in ergebnis.hinweise %}<li>{{ h }}</li>{% endfor %}</ul>
+  {%- endif %}</div>{% endif %}
+
+<div class="nicht-drucken">
+<h2>Datei einspielen</h2>
+<form method="post" action="/wiso/import" enctype="multipart/form-data">
+  <label>CSV-Export „Buchungen“ <small>höchstens {{ max_mb }} MB, etwa
+    „20261027_Buchungen.csv“</small>
+    <input type="file" name="datei" accept=".csv,text/csv" required></label>
+  <button type="submit">Vorschau zeigen</button>
+</form>
+<p class="hinweis">In WISO Steuer (EÜR-Modul, am Mac oder unter Windows): „Daten im-/exportieren“
+  → „Buchungen als CSV-Datei“ — vor dem Jahresabschluss, danach ist der Punkt gesperrt.
+  Erwartet wird die Kopfzeile <code>{{ kopf }}</code>. Gelesen wird nur, nichts wird an WISO
+  zurückgeschickt; die Datei liegt nach dem Übernehmen unverändert und schreibgeschützt im
+  Datenordner unter <code>importe/wiso/</code>.</p>
+</div>
+
+{% if angaben %}
+<h2 id="angaben">Angaben fehlen</h2>
+<p class="hinweis">Was der Import nicht weiß. Ausfüllen — dann rechnet bzw. bucht das Tool
+  weiter.</p>
+{% set zurueck = '/wiso' %}
+{% for a in angaben %}{% include "angaben_formular.html" %}{% endfor %}
+{% endif %}
+
+{% if ohne_datei %}
+<div class="meldung warn">
+  <strong>{{ ohne_datei }} {% if ohne_datei == 1 %}Beleg{% else %}Belege{% endif %} aus WISO
+    ohne Datei.</strong> Die Originale lassen sich nachträglich anhängen: je Beleg in der
+  <a href="/belege?ohne_datei=1">Belegliste</a> unter „Ändern“ → „Datei anhängen“, oder den
+  ganzen Belegordner unter <a href="/belege#eingang">Belege → Beleg aufnehmen</a> hochladen
+  und „Alle prüfen und buchen“ — passende Dateien schlägt die Vorschau zum Anhängen vor.
+</div>
+{% endif %}
+
+<h2>Bisherige Importe</h2>
+{% if importe %}
+<table>
+  <thead><tr><th>Eingespielt</th><th>Datei</th><th>Jahr</th><th class="zahl">Zeilen</th>
+    <th>Damals</th><th></th></tr></thead>
+  <tbody>
+  {% for z, anzahl in importe %}
+    <tr>
+      <td class="datum">{{ z.importiert_am | zeit_lokal }}</td>
+      <td>{{ z.dateiname }}<br><span class="gedaempft mono">{{ z.sha256[:12] }}</span></td>
+      <td class="mono">{{ z.jahr }}</td>
+      <td class="zahl">{{ z.zeilen }}</td>
+      <td>{{ anzahl.neu or 0 }} neu{% if anzahl.verknuepfen %}, {{ anzahl.verknuepfen }} zum
+        Verknüpfen{% endif %}, {{ anzahl.bekannt or 0 }} schon da
+        {%- if anzahl.geaendert %}, {{ anzahl.geaendert }} geändert{% endif %}
+        {%- if anzahl.in_wiso_geloescht %}, {{ anzahl.in_wiso_geloescht }} in WISO gelöscht{% endif %}</td>
+      <td><a href="/wiso/abgleich?jahr={{ z.jahr }}">Abgleich {{ z.jahr }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Noch nichts eingespielt.</p>
+{% endif %}
+{% endblock %}

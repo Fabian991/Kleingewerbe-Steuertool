@@ -1,0 +1,61 @@
+{
+  "_hinweis": [
+    "Jahresabhaengige Pauschbetraege. Sie gehoeren in eine versionierte Datei und",
+    "NICHT in den Code: sonst braucht das Werkzeug jedes Jahr Programmierarbeit",
+    "und verfaellt leise.",
+    "",
+    "Ein Jahr ohne eigenen Eintrag faellt auf das neueste bekannte zurueck UND",
+    "sagt das. Stillschweigend die Vorjahreswerte zu nehmen waere der",
+    "gefaehrlichere Weg: die Zahl sieht dann richtig aus.",
+    "",
+    "Quellen und Vorbehalt: die Inlandssaetze der Verpflegungspauschale stehen in",
+    "§ 9 Abs. 4a EStG und sind seit 2020 unveraendert. Die Auslandssaetze setzt",
+    "das BMF jedes Jahr neu fest und sind hier NICHT erfasst -- eine Auslandsreise",
+    "muss von Hand erfasst werden, lieber das als ein veralteter Satz, der",
+    "aussieht wie ein gepruefter Wert.",
+    "",
+    "⚠ Die Uebernachtungspauschale von 20 EUR ist hier bewusst NICHT aufgefuehrt:",
+    "sie gilt fuer den steuerfreien Arbeitgeberersatz an Arbeitnehmer. Ein",
+    "Selbststaendiger zieht Uebernachtungskosten nur mit dem tatsaechlichen Beleg",
+    "ab (§ 4 Abs. 4 EStG). Dafuer gibt es keine Pauschale und deshalb hier keine",
+    "Zahl."
+  ],
+  "jahre": {
+    "2024": {
+      "verpflegung_inland_vollertag_cent": 2800,
+      "verpflegung_inland_teiltag_cent": 1400,
+      "verpflegung_mindeststunden_teiltag": 8,
+      "kilometergeld_pkw_cent": 30,
+      "homeoffice_tag_cent": 600,
+      "homeoffice_hoechstbetrag_cent": 126000,
+      "gwg_grenze_netto_cent": 80000,
+      "gwg_verzeichnis_ab_netto_cent": 25000,
+      "geschenk_freigrenze_brutto_cent": 5000,
+      "bewirtung_abziehbar_promille": 700
+    },
+    "2025": {
+      "verpflegung_inland_vollertag_cent": 2800,
+      "verpflegung_inland_teiltag_cent": 1400,
+      "verpflegung_mindeststunden_teiltag": 8,
+      "kilometergeld_pkw_cent": 30,
+      "homeoffice_tag_cent": 600,
+      "homeoffice_hoechstbetrag_cent": 126000,
+      "gwg_grenze_netto_cent": 80000,
+      "gwg_verzeichnis_ab_netto_cent": 25000,
+      "geschenk_freigrenze_brutto_cent": 5000,
+      "bewirtung_abziehbar_promille": 700
+    },
+    "2026": {
+      "verpflegung_inland_vollertag_cent": 2800,
+      "verpflegung_inland_teiltag_cent": 1400,
+      "verpflegung_mindeststunden_teiltag": 8,
+      "kilometergeld_pkw_cent": 30,
+      "homeoffice_tag_cent": 600,
+      "homeoffice_hoechstbetrag_cent": 126000,
+      "gwg_grenze_netto_cent": 80000,
+      "gwg_verzeichnis_ab_netto_cent": 25000,
+      "geschenk_freigrenze_brutto_cent": 5000,
+      "bewirtung_abziehbar_promille": 700
+    }
+  }
+}

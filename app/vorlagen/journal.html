@@ -1,0 +1,83 @@
+{% extends "basis.html" %}
+{% set aktiv = 'journal' %}
+{% block titel %}Protokoll · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Änderungsprotokoll</h1>
+<p class="hinweis">{{ gesamt }} {{ "Vorgang" if gesamt == 1 else "Vorgänge" }}. Die Tabelle ist per Trigger gegen Änderung und
+  Löschung gesperrt und kann nur wachsen — § 146 Abs. 4 AO verlangt, dass der
+  ursprüngliche Inhalt feststellbar bleibt.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+
+<h2>Klartext-Spiegel</h2>
+<p class="hinweis">Ein Protokoll, das man nur mit dieser Anwendung lesen kann, verfehlt
+  seinen Zweck: im Prüfungs- oder Schadensfall ist die Anwendung genau das, was fehlt.
+  Der Spiegel wird immer vollständig neu aus der Tabelle geschrieben — und bewusst nicht
+  bei jedem Vorgang: ein Eintrag entsteht innerhalb einer Transaktion, und ein Rücknehmen
+  würde die Zeile in der Datei stehen lassen. Eine Datei, die Vorgänge behauptet, die es
+  nicht gab, ist schlechter als keine. Jede Sicherung schreibt ihn mit: das Archiv
+  enthält den Spiegel bis unmittelbar vor der Sicherung selbst, und danach wird er auf
+  der Platte mit dem Sicherungsvorgang nachgezogen.</p>
+{% if spiegel_zeilen is none %}
+<div class="meldung warn">Der Spiegel <code class="pfad">{{ spiegel }}</code> ist noch nicht
+  geschrieben.</div>
+{% elif spiegel_zeilen != gesamt %}
+<div class="meldung warn">Der Spiegel enthält {{ spiegel_zeilen }} von {{ gesamt }}
+  {{ "Vorgang" if gesamt == 1 else "Vorgängen" }} und ist damit veraltet.</div>
+{% else %}
+<p class="hinweis"><code class="pfad">{{ spiegel }}</code> ist aktuell: {{ spiegel_zeilen }} {{ "Vorgang" if spiegel_zeilen == 1 else "Vorgänge" }}.</p>
+{% endif %}
+<form method="post" action="/journal/export">
+  <button type="submit">Spiegel jetzt schreiben</button>
+</form>
+
+<h2>Vorgänge</h2>
+<form method="get" action="/journal" class="zeile">
+  <label>Objekt
+    <select name="objekttyp">
+      <option value="">alle</option>
+      {% for t in typen %}
+        <option value="{{ t }}" {% if t == filter.objekttyp %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select></label>
+  <label>Aktion
+    <select name="aktion">
+      <option value="">alle</option>
+      {% for a in aktionen %}
+        <option value="{{ a }}" {% if a == filter.aktion %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select></label>
+  <button type="submit">Filtern</button>
+  {% if filter.objekttyp or filter.aktion %}<a href="/journal">Filter aufheben</a>{% endif %}
+</form>
+
+{% if zeilen %}
+<table>
+  <thead><tr><th>Zeitpunkt (Ortszeit)</th><th>Aktion</th><th>Objekt</th>
+    <th>Änderung</th></tr></thead>
+  <tbody>
+  {% for z in zeilen %}
+    <tr>
+      <td class="mono">{{ z.zeitpunkt_utc | zeit_lokal }}</td>
+      <td>{{ z.aktion }}</td>
+      <td>{{ z.objekttyp }}{% if z.objekt_id %} <span class="gedaempft">#{{ z.objekt_id }}</span>{% endif %}</td>
+      <td>
+        {%- if z.feld %}<span class="gedaempft">{{ z.feld }}:</span> {% endif %}
+        {%- if z.wert_alt is not none %}{{ z.wert_alt }} → {% endif %}
+        {%- if z.wert_neu is not none %}{{ z.wert_neu }}{% endif %}
+        {%- if z.begruendung %}<br><span class="gedaempft">{{ z.begruendung }}</span>{% endif %}
+        {%- if z.hash %}<br><span class="gedaempft mono">{{ z.hash[:16] }}…</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if zeilen | length >= 500 %}
+<p class="hinweis">Die 500 neuesten Vorgänge. Der vollständige Bestand steht im
+  Spiegel.</p>
+{% endif %}
+{% else %}
+<p class="leer">Keine Vorgänge zu diesem Filter.</p>
+{% endif %}
+{% endblock %}

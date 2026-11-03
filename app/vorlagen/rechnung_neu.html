@@ -1,0 +1,176 @@
+{% extends "basis.html" %}
+{% set aktiv = 'rechnungen' %}
+{% block titel %}Neue Rechnung · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Neue Rechnung</h1>
+<p class="hinweis">Nummer wird erst beim Festschreiben vergeben — ein verworfener
+  Entwurf hinterlässt keine Lücke. Vorschau für das laufende Jahr:
+  <code>{{ naechste_nummer }}</code> <span class="gedaempft">(bei einem Rechnungsdatum
+  im Vorjahr zählt der Kreis des Vorjahres; der Entwurf zeigt die passende Nummer)</span></p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+
+{% if not gewaehlt %}
+<h2>Kunde wählen</h2>
+{% if kunden %}
+<table>
+  <thead><tr><th>Kunde</th><th class="zahl">Offene Stunden</th>
+    <th class="zahl">Einträge</th><th></th></tr></thead>
+  <tbody>
+  {% for k in kunden %}
+    <tr>
+      <td>{{ k.name }}
+        {%- if k.doppelt %} <span class="gedaempft">({{ k.kundennummer }}, {{ k.ort }})</span>{% endif %}</td>
+      <td class="zahl mono">{% if k.minuten %}{{ k.minuten | dezimalstunden }}{% else %}—{% endif %}</td>
+      <td class="zahl">{{ k.eintraege or '—' }}</td>
+      <td><a href="/rechnung/neu?kunde={{ k.id }}">{% if k.eintraege %}Zeiten
+        auswählen{% else %}ohne Zeiten{% endif %}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Noch keine Kunden. <a href="/kunden/neu">Kunden anlegen</a></p>
+{% endif %}
+
+{% else %}
+
+<h2>{{ kunde_name }} <small><a href="/rechnung/neu">anderen Kunden wählen</a></small></h2>
+
+{% if timer_laeuft %}
+<p class="hinweis">Ein laufender Timer wird nicht angeboten — erst stoppen, dann hat die
+  Zeit eine Dauer und lässt sich abrechnen.</p>
+{% endif %}
+
+{% if not zeiten %}
+<div class="meldung warn">Für diesen Kunden sind keine Zeiten offen.
+  <a href="/zeiten">Zeit erfassen</a>, <a href="/rechnung/neu">anderen Kunden wählen</a> —
+  oder unten eine Rechnung ohne Zeiten anlegen.</div>
+{% else %}
+{% if satz_fehlt %}
+<div class="meldung warn">Für diesen Kunden ist kein Stundensatz hinterlegt —
+  <a href="/kunden/{{ gewaehlt }}">am Kunden</a> oder in den
+  <a href="/einrichtung">Einstellungen</a> eintragen. Ohne Satz lässt sich kein Entwurf
+  anlegen.</div>
+{% endif %}
+<form method="post" action="/rechnung/neu">
+  <input type="hidden" name="kunde_id" value="{{ gewaehlt }}">
+
+  {# eingabe.zeit ist None, solange nichts abgewiesen wurde: dann ist alles
+     vorgewaehlt. Nach einer Abweisung (422) bleibt genau die Auswahl stehen,
+     die abgeschickt wurde. #}
+  {% set alle = eingabe.zeit is none or (zeiten | rejectattr('id', 'in', eingabe.zeit) | list | length == 0) %}
+  <fieldset>
+    <legend>Zeiten{% if eingabe.zeit is none %} — alle vorgewählt{% endif %}</legend>
+    <table>
+      <thead><tr>
+        <th><input type="checkbox" {% if alle %}checked{% endif %} onchange="
+          document.querySelectorAll('input[name=zeit]').forEach(e => e.checked = this.checked)"
+          aria-label="alle"></th>
+        <th>Datum</th><th>Titel</th><th class="zahl">Dauer</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for z in zeiten %}
+        <tr>
+          <td><input type="checkbox" name="zeit" value="{{ z.id }}"
+                     {% if eingabe.zeit is none or z.id in eingabe.zeit %}checked{% endif %}
+                     aria-label="Zeit vom {{ z.datum }}"></td>
+          <td class="mono">{{ z.datum | datum_de }}</td>
+          <td>{{ z.titel }}
+            {%- if z.beschreibung %}<br><span class="gedaempft beschreibung">{{ z.beschreibung }}</span>{% endif %}</td>
+          <td class="zahl mono">{{ z.dauer_minuten | dauer }}</td>
+          <td>{% if z.abrechnungsmodus == 'KULANZ' %}
+            <span class="chip ohne_berechnung_gestellt">ohne Berechnung</span>{% endif %}
+            {%- if z.abrechnungsmodus == 'PAUSCHAL' %}
+            <span class="chip">pauschal</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+
+  <fieldset>
+    <legend>Positionen gruppieren</legend>
+    <div class="modi">
+      {% for m in modi %}
+      <label class="modus">
+        <input type="radio" name="modus" value="{{ m }}"
+               {% if m == eingabe.modus %}checked{% endif %}>
+        <span>{{ modus_text[m] }}</span>
+        {% if satz_fehlt %}<small class="gedaempft">kein Stundensatz</small>
+        {%- else %}<small class="mono">{{ summen[m] | euro }} €</small>{% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    <p class="hinweis">{% if regel and regel.rundet %}Gerundet wird je Position —
+      die Zeitsumme ist {{ regel.text }}{% if regel.quelle == 'KUNDE' %} (Regel des
+      Kunden{% if regel.grundlage %}, vereinbart in: {{ regel.grundlage }}{% endif %}){% else %}
+      (Vorgabe des Betriebs){% endif %} —, deshalb unterscheiden sich die Summen.
+      {%- elif regel %}Für diesen Kunden wird nicht gerundet: abgerechnet wird
+      minutengenau.{% else %}Gerundet wird je Position, deshalb unterscheiden sich die
+      Summen.{% endif %} „Pro Eintrag“ rechnet auf die Minute — Intervallrundung je Eintrag
+      würde die Summe vervielfachen.</p>
+    <label class="zeile"><input type="checkbox" name="einzelnachweis" value="1"
+      {% if eingabe.einzelnachweis %}checked{% endif %}>
+      <span>Einzelnachweis als Anlage anhängen</span></label>
+    <label class="zeile"><input type="checkbox" name="leistungszeitraum" value="1"
+      {% if eingabe.leistungszeitraum %}checked{% endif %}>
+      <span>Leistungszeitraum auf der Rechnung ausweisen</span></label>
+    <p class="hinweis">Keine Pflichtangabe: § 34a Satz 1 UStDV verlangt ihn für
+      Kleinunternehmer nicht. Er hilft dem Kunden beim Prüfen und bleibt in jedem Fall
+      gespeichert — ausgeschaltet wird nur die Zeile auf dem Papier.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Kopf und Texte</legend>
+    <div class="felder">
+      <label>Rechnungsdatum
+        <input name="datum" type="date" value="{{ eingabe.datum }}" required></label>
+    </div>
+    <label style="margin-top:12px">Betreff
+      <small>leer lassen für „Rechnung – Monat Jahr – Kunde“</small>
+      <input name="betreff" value="{{ eingabe.betreff }}"></label>
+    <label>Einleitung
+      <textarea name="einleitung" rows="2">{{ eingabe.einleitung }}</textarea></label>
+    <label>Schlusstext <small>optional</small>
+      <textarea name="schluss" rows="2">{{ eingabe.schluss }}</textarea></label>
+  </fieldset>
+
+  {# Der Entwurf ist der Weg zur Vorschau: er vergibt keine Nummer und laesst
+     sich folgenlos verwerfen. Eine eigene Vorschau schon hier waere ein
+     zweiter Rechenweg -- und eine Quelle fuer Abweichungen zur Rechnung. #}
+  <button type="submit">Entwurf erstellen und Vorschau ansehen</button>
+  <p class="hinweis">Ein Entwurf vergibt keine Nummer und lässt sich verwerfen. Die
+    Entwurfsseite zeigt das PDF, wie es beim Festschreiben entsteht.</p>
+</form>
+{% endif %}
+
+{# Rechnung ohne Zeiten: freie Positionen -- die Affiliate-Provision zum
+   Monatsende, eine Pauschale ohne Zeiterfassung. Der Entwurf entsteht leer
+   mit einem Leistungszeitraum; die Betraege kommen auf der Entwurfsseite. #}
+<details class="ohne-zeiten" {% if eingabe.ohne_zeiten or not zeiten %}open{% endif %}>
+  <summary>Rechnung ohne Zeiten — freie Positionen (z. B. Affiliate-Provision)</summary>
+  <form method="post" action="/rechnung/neu">
+    <input type="hidden" name="kunde_id" value="{{ gewaehlt }}">
+    <input type="hidden" name="ohne_zeiten" value="1">
+    <input type="hidden" name="einleitung" value="{{ eingabe.einleitung }}">
+    <input type="hidden" name="leistungszeitraum"
+           value="{% if eingabe.leistungszeitraum %}1{% endif %}">
+    <p class="hinweis">Der Entwurf entsteht ohne Positionen; Leistung, Menge und Einzelpreis
+      trägst du auf der Entwurfsseite ein. Eine Nummer gibt es erst beim Festschreiben.</p>
+    <div class="felder">
+      <label>Rechnungsdatum
+        <input name="datum" type="date" value="{{ eingabe.datum }}" required></label>
+      <label>Leistungszeitraum von
+        <input name="leistung_von" type="date" value="{{ eingabe.leistung_von }}" required></label>
+      <label>bis
+        <input name="leistung_bis" type="date" value="{{ eingabe.leistung_bis }}" required></label>
+    </div>
+    <label style="margin-top:12px">Betreff
+      <small>leer lassen für „Rechnung – Monat Jahr – Kunde“</small>
+      <input name="betreff" value="{{ eingabe.betreff if eingabe.ohne_zeiten else '' }}"></label>
+    <button type="submit">Entwurf ohne Zeiten anlegen</button>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

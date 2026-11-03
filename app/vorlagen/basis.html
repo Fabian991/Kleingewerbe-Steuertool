@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{% block titel %}Steuer-Tool{% endblock %}</title>
+<link rel="stylesheet" href="/static/stil.css">
+{# Leeres Icon: sonst fragt der Browser /favicon.ico ab und meldet in der
+   Konsole einen 404. #}
+<link rel="icon" href="data:,">
+</head>
+<body>
+<div class="seite">
+{#
+  Die Registerleiste: wie die Reiter eines Kontobuchs. Drei Gruppen, weil
+  zwoelf Eintraege in einer Reihe keine Ordnung haben -- was taeglich
+  gebraucht wird, steht oben; was der Buchfuehrung dient, in der Mitte; was
+  man einmal einrichtet, unten.
+#}
+<aside class="register">
+  <a class="marke" href="/">Steuer-Tool<small>Kleinunternehmer · § 19 UStG</small></a>
+  <nav aria-label="Bereiche">
+    <div class="gruppe">
+      <span>Täglich</span>
+      <a href="/" {% if aktiv == 'start' %}aria-current="page"{% endif %}>Übersicht</a>
+      <a href="/zeiten" {% if aktiv == 'zeiten' %}aria-current="page"{% endif %}>Zeiten</a>
+      <a href="/rechnungen" {% if aktiv == 'rechnungen' %}aria-current="page"{% endif %}>Rechnungen</a>
+      <a href="/kunden" {% if aktiv == 'kunden' %}aria-current="page"{% endif %}>Kunden</a>
+    </div>
+    <div class="gruppe">
+      <span>Buchführung</span>
+      <a href="/belege" {% if aktiv == 'belege' %}aria-current="page"{% endif %}>Belege</a>
+      <a href="/einnahmen" {% if aktiv == 'einnahmen' %}aria-current="page"{% endif %}>Einnahmen</a>
+      <a href="/reisen" {% if aktiv == 'reisen' %}aria-current="page"{% endif %}>Reisen</a>
+      <a href="/anlagen" {% if aktiv == 'anlagen' %}aria-current="page"{% endif %}>Anlagen</a>
+      <a href="/euer" {% if aktiv == 'euer' %}aria-current="page"{% endif %}>EÜR</a>
+      <a href="/steuer" {% if aktiv == 'steuer' %}aria-current="page"{% endif %}>Steuerrücklage</a>
+    </div>
+    <div class="gruppe">
+      <span>Verwaltung</span>
+      <a href="/leistungen" {% if aktiv == 'leistungen' %}aria-current="page"{% endif %}>Leistungen</a>
+      <a href="/wiso" {% if aktiv == 'wiso' %}aria-current="page"{% endif %}>WISO-Import</a>
+      <a href="/backup" {% if aktiv == 'backup' %}aria-current="page"{% endif %}>Sicherung</a>
+      <a href="/journal" {% if aktiv == 'journal' %}aria-current="page"{% endif %}>Protokoll</a>
+      <a href="/einrichtung" {% if aktiv == 'einrichtung' %}aria-current="page"{% endif %}>Einstellungen</a>
+    </div>
+  </nav>
+</aside>
+<main>
+{% block inhalt %}{% endblock %}
+</main>
+</div>
+<script>
+/* Ein Formular wird nur einmal abgeschickt. Ein Doppelklick auf „Buchen“
+   oder „Bezahlt“ schickte sonst zwei Anfragen; der Server faengt die meisten
+   selbst ab, aber nicht jede zweite Anfrage ist erkennbar falsch (zwei gleiche
+   Fahrten an einem Tag gibt es wirklich). Ein Merker statt deaktivierter
+   Knoepfe: so bleibt der Wert des geklickten Knopfs im Formular. Nach vier
+   Sekunden ist das Formular wieder frei -- falls die Antwort ein Download
+   war und die Seite stehen bleibt. */
+(function () {
+  document.addEventListener('submit', function (ereignis) {
+    var formular = ereignis.target;
+    if (ereignis.defaultPrevented || (formular.method || '').toLowerCase() !== 'post') return;
+    if (formular.dataset.abgeschickt) { ereignis.preventDefault(); return; }
+    formular.dataset.abgeschickt = '1';
+    setTimeout(function () { delete formular.dataset.abgeschickt; }, 4000);
+  });
+  window.addEventListener('pageshow', function () {
+    document.querySelectorAll('form[data-abgeschickt]').forEach(function (f) {
+      delete f.dataset.abgeschickt;
+    });
+  });
+})();
+</script>
+</body>
+</html>

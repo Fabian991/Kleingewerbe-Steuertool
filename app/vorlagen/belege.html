@@ -1,0 +1,699 @@
+{% extends "basis.html" %}
+{% set aktiv = 'belege' %}
+{% block titel %}Belege · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Eingangsbelege</h1>
+<p class="hinweis">Gebucht wird immer der <strong>Bruttobetrag</strong>: ohne Vorsteuerabzug
+  sind Betriebsausgaben mit dem Bruttobetrag in den jeweiligen Positionen einzutragen.
+  Die Felder werden lokal ausgelesen — die Belege verlassen diesen Rechner nicht.
+  Rechnungen in Fremdwährung rechnet das Tool zum EZB-Referenzkurs um (die öffentliche
+  Kurstabelle lädt es selbst); unter „Ändern“ lässt sich der Betrag laut Kreditkarte
+  nachtragen.</p>
+
+{# Meldungen zu einer Aktion gehoeren nicht aufs Papier. Gehoert die Meldung
+   zu einer Aktion an einem Beleg der Liste (meldung_zu), steht sie ueber
+   dessen Zeile -- dort, wo geklickt wurde --, nicht hier oben. #}
+{% if meldung_zu is none %}
+{% if fehler %}<div class="meldung fehler nicht-drucken">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg nicht-drucken">{{ erfolg }}
+  {#- Nach dem Buchen in der Pruefmaske: gleich die naechste Datei. #}
+  {%- if weiter %}<p><a href="/belege/pruefen/{{ weiter.name | urlencode }}">Weiter zur nächsten
+    Datei im Eingang (noch {{ weiter.anzahl }})</a></p>{% endif %}</div>{% endif %}
+{% if warnung %}<div class="meldung warn nicht-drucken">{{ warnung }}</div>{% endif %}
+{% endif %}
+{% if hinweis %}<div class="meldung laufend nicht-drucken">{{ hinweis }}</div>{% endif %}
+
+<h2>Beleg aufnehmen</h2>
+<form method="post" action="/belege/hochladen" enctype="multipart/form-data">
+  <label>Dateien <small>PDF, XML einer E-Rechnung, Scan, Foto oder E-Mail (.eml) — auch
+    mehrere auf einmal; eine einzelne öffnet gleich die Prüfmaske, mehrere landen unten im
+    Eingang</small>
+    <input type="file" name="datei" required multiple
+           accept=".pdf,.xml,.jpg,.jpeg,.png,.tif,.tiff,.heic,.webp,.eml"></label>
+  <button type="submit">Auslesen und prüfen</button>
+</form>
+{# Bezahlt als Vorgabe (app/logik/beleg/bezahlt.py): gilt fuer die
+   Pruefmaske, „Alle prüfen und buchen“ und den Eingangsordner. #}
+<form method="post" action="/belege/vorgaben" class="nicht-drucken" id="bezahlt-vorgabe">
+  <label class="zeile"><input type="checkbox" name="bezahlt" value="1"
+    {% if bezahlt_vorgabe %}checked{% endif %}>
+    Meine Eingangsbelege sind in der Regel schon bezahlt — Zahltag = Belegdatum vorbelegen</label>
+  <p class="hinweis">Dann entsteht die Zahlung gleich mit der Buchung: in der Prüfmaske ist
+    „bezahlt am“ mit dem Belegdatum vorausgewählt (änderbar, „offen“ geht auch), und
+    automatisch gebuchte Belege gelten als am Belegdatum bezahlt — außer am Jahreswechsel
+    (22.12. bis 10.01.), dort fragt die Prüfmaske nach dem Zahltag.</p>
+  <button type="submit" class="leise">Speichern</button>
+</form>
+<p class="hinweis">Rechnung nur als E-Mail? Am Mac die Mail aus Apple&nbsp;Mail in den Finder
+  ziehen — das ergibt eine <code>.eml</code> —, oder in Gmail im Browser „⋮ → Original
+  herunterladen“. Mit Rechnung im Anhang ist der Anhang der Beleg, die Mail wird mit
+  archiviert. Auf dem iPhone speichert Gmail keine <code>.eml</code>; dort geht „Teilen →
+  Drucken → In Dateien sichern“ als PDF.</p>
+<p class="hinweis">
+  Die Stufen in dieser Reihenfolge: eingebettetes XML einer E-Rechnung (dann ist es
+  maßgebend, und der Bildteil wird <em>nicht</em> ausgelesen), sonst die Textschicht des
+  PDF, sonst Bilderkennung mit Apple&nbsp;Vision.
+  {% if vision.moeglich %}
+    <br><span class="chip bezahlt">Bilderkennung bereit</span> {{ vision.begruendung }}
+  {% else %}
+    <br><span class="chip gestellt">Bilderkennung nicht verfügbar</span> {{ vision.begruendung }}
+  {% endif %}
+</p>
+
+{# Der Eingangsordner: Rechnungen vom Handy. Auf Papier waeren das nur ein
+   Formular und der Bericht eines Laufs -- deshalb nicht-drucken. #}
+<style>
+  #eingangsordner > form + .meldung, #eingangsordner > form + p.hinweis { margin-top: 20px; }
+  #eingangsordner .meldung p { margin: 12px 0 0; }
+</style>
+<section class="nicht-drucken" id="eingangsordner">
+<h2>Eingangsordner</h2>
+<p class="hinweis">Rechnungen vom Handy: einfach in einen Ordner legen. Beim nächsten Start
+  holt das Tool sie dort ab, liest sie aus und bucht sicher erkannte Rechnungen bekannter
+  Lieferanten gleich — {% if bezahlt_vorgabe %}als am Belegdatum bezahlt (siehe oben; am
+  Jahreswechsel wartet die Rechnung auf die Prüfmaske){% else %}ohne Zahlung, die zählt erst
+  mit dem Abfluss{% endif %}. Alles andere wartet unten im Eingang auf die Prüfmaske.
+  Abgeholte Dateien wandern im Ordner nach „{{ ordner.uebernommen }}“, was kein Beleg ist, nach
+  „{{ ordner.nicht_uebernommen }}“. Wer je Jahr einen eigenen Ordner führt, hinterlegt unten
+  einen je Jahr; abgeholt werden alle.</p>
+{% if ordner.icloud_weg %}
+<p class="hinweis"><strong>Auf dem iPhone:</strong> In Mail den Anhang öffnen → Teilen →
+  „In Dateien sichern“ → iCloud Drive
+  {%- for teil in ordner.icloud_weg %} → „{{ teil }}“{% endfor %} → Sichern. Beim nächsten
+  Start holt das Tool sie ab.</p>
+{% else %}
+<p class="hinweis"><strong>Vom iPhone:</strong> Dieser Ordner liegt nicht in iCloud Drive.
+  Rechnungen vom Handy landen dort nur, wenn er in der Dateien-App des iPhones auftaucht
+  (etwa als Netzwerkfreigabe) — sonst einen Ordner in iCloud Drive wählen, etwa mit
+  „Vorschlag übernehmen“.</p>
+{% endif %}
+
+{# Fehler und Rueckfrage stehen bei dem Formular, das sie ausgeloest hat:
+   dem fuer alle Jahre oder dem fuer ein Jahr (ordner_eingabe.jahr). #}
+{% set jahr_form = 'jahr' in ordner_eingabe %}
+{% if ordner.jahreswechsel %}{% set jw = ordner.jahreswechsel %}
+<div class="meldung warn" id="jahreswechsel-ordner">
+  <strong>Für {{ jw.jahr }} ist noch kein Eingangsordner hinterlegt.</strong>
+  {%- if jw.vorschlag %} {% if jw.gefunden %}Gefunden{% else %}Vorschlag{% endif %}:
+  <strong>{{ jw.anzeige }}</strong>.
+  <form method="post" action="/belege/ordner" class="inline">
+    <input type="hidden" name="jahr" value="{{ jw.jahr }}">
+    <input type="hidden" name="vorschlag" value="1">
+    <button type="submit" class="leise">{% if jw.gefunden %}Übernehmen{% else %}Anlegen und
+      übernehmen{% endif %}</button></form>
+  {%- else %} Unten unter „Ordner für ein Jahr“ hinterlegen.{% endif %}
+  <p>Der Ordner von {{ jw.jahr - 1 }} wird weiter abgeholt (für Nachzügler), bis du ihn
+    entfernst.</p>
+</div>
+{% endif %}
+{% if ordner.umwidmen %}
+<div class="meldung laufend" id="umwidmen">
+  Führst du für jedes Jahr einen eigenen Ordner? Dann lässt sich dieser Ordner als Ordner für
+  {{ ordner.umwidmen }} führen — ab Dezember schlägt das Tool den Ordner für das nächste Jahr
+  vor, und der alte wird weiter abgeholt.
+  <div class="knopfzeile">
+    <form method="post" action="/belege/ordner/umwidmen" class="inline">
+      <input type="hidden" name="jahr" value="{{ ordner.umwidmen }}">
+      <button type="submit" class="leise">Als Ordner für {{ ordner.umwidmen }} führen</button></form>
+    <form method="post" action="/belege/ordner/hinweis-aus" class="inline">
+      <button type="submit" class="still">Nein, ein Ordner für alle Jahre</button></form>
+  </div>
+</div>
+{% endif %}
+
+<h3>Ordner für alle Jahre</h3>
+{% if ordner_fehler and not jahr_form %}<div class="meldung fehler" id="ordner-fehler" role="alert">{{ ordner_fehler }}</div>{% endif %}
+{% set pfad_wert = ordner_eingabe.pfad if 'pfad' in ordner_eingabe else (ordner.pfad or '') %}
+{# Der Platzhalter beginnt mit „z. B.“: ein grauer Pfad im leeren Feld las sich
+   wie ein schon eingetragener Ordner -- und der Nutzer wunderte sich, warum
+   nichts abgeholt wird. #}
+{% set auto_an = (ordner_eingabe.automatisch == '1') if 'automatisch' in ordner_eingabe else ordner.automatisch %}
+<form method="post" action="/belege/ordner">
+  <label>Ordner
+    <small>{% if ordner.pfad %}leeren und speichern schaltet ihn aus{% else %}noch
+      aus{% if ordner.vorschlag %} — vorgeschlagen ist der Ordner „Steuer-Tool Belege“ in
+      iCloud Drive{% endif %}{% endif %}</small>
+    <input name="pfad" value="{{ pfad_wert }}" autocomplete="off" spellcheck="false"
+           {%- if ordner_fehler and not jahr_form %} aria-invalid="true" aria-describedby="ordner-fehler"{% endif %}
+           placeholder="z. B. {{ ordner.vorschlag or '/Pfad/zum/Ordner/Steuer-Tool Belege' }}"></label>
+  {% if ordner.anzeige and not ordner_eingabe %}<p class="hinweis">In der Dateien-App und im
+    Finder: <strong>{{ ordner.anzeige }}</strong></p>{% endif %}
+  {% if ordner_eingabe.belegt and not jahr_form %}
+  <label class="zeile"><input type="checkbox" name="bestaetigt" value="1">
+    Ja, alle Dateien darin abholen</label>
+  {% endif %}
+  <label class="zeile"><input type="checkbox" name="automatisch" value="1"
+    {% if auto_an %}checked{% endif %}>
+    Sicher erkannte Rechnungen bekannter Lieferanten gleich buchen</label>
+  <p class="hinweis">Der Haken gilt für alle Eingangsordner, auch die je Jahr.</p>
+  {# "Jetzt abholen" schickt dasselbe Formular an eine andere Adresse. Die
+     Route holt nach der GESPEICHERTEN Einstellung ab -- weichen Feld oder
+     Haken davon ab, holt sie nichts ab und sagt "erst speichern". Abgeholt
+     werden alle hinterlegten Ordner. #}
+  <div class="knopfzeile">
+    <button type="submit">Speichern</button>
+    {% if ordner.irgendeiner %}
+    <button type="submit" formaction="/belege/ordner/abholen" class="leise">Jetzt abholen</button>
+    {% endif %}
+    {% if ordner.vorschlag_anbieten %}
+    <button type="submit" name="vorschlag" value="1" class="leise">Vorschlag übernehmen</button>
+    {% endif %}
+  </div>
+</form>
+
+{# Ein Ordner je Jahr. Abgeholt werden alle, bis einer entfernt wird --
+   verspaetete Rechnungen des Vorjahres gehen nicht verloren. #}
+<h3 id="jahresordner">Ordner für ein Jahr</h3>
+{% if ordner.jahre %}
+<table class="jahresordner">
+  <thead><tr><th>Jahr</th><th>Ordner</th><th></th></tr></thead>
+  <tbody>
+  {% for j in ordner.jahre %}
+    <tr>
+      <td>{{ j.jahr }}</td>
+      <td class="pfad">{{ j.anzeige }}</td>
+      <td class="aktionen">
+        <details class="loeschen">
+          <summary>Entfernen</summary>
+          <form method="post" action="/belege/ordner">
+            <input type="hidden" name="jahr" value="{{ j.jahr }}">
+            <input type="hidden" name="pfad" value="">
+            <p class="hinweis">Der Ordner wird nicht mehr abgeholt; die Dateien darin bleiben,
+              wo sie sind.</p>
+            <button type="submit" class="still">Ja, Ordner {{ j.jahr }} entfernen</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="hinweis">Noch keiner. Für jedes Jahr ein eigener Ordner — etwa „Belege 2026“, im
+  nächsten Jahr „Belege 2027“; das Tool schlägt ihn ab Dezember vor. Am besten ein Ordner nur
+  für Rechnungen: das Tool holt jede Datei darin ab.</p>
+{% endif %}
+{% if ordner_fehler and jahr_form %}<div class="meldung fehler" id="ordner-fehler" role="alert">{{ ordner_fehler }}</div>{% endif %}
+<form method="post" action="/belege/ordner" id="jahresordner-form">
+  <div class="felder">
+    <label>Jahr
+      <select name="jahr">
+        {% for o in ordner.jahr_optionen %}
+        <option value="{{ o.jahr }}" {% if (ordner_eingabe.jahr if jahr_form else ordner.jahr_gewaehlt) | string == o.jahr | string %}selected{% endif %}>{{ o.jahr }} ({{ o.text }}{% if o.vergeben %}, ändern{% endif %})</option>
+        {% endfor %}
+      </select></label>
+    <label>Ordner
+      <input name="pfad" autocomplete="off" spellcheck="false"
+             value="{{ ordner_eingabe.jahr_pfad if jahr_form else '' }}"
+             {%- if ordner_fehler and jahr_form %} aria-invalid="true" aria-describedby="ordner-fehler"{% endif %}
+             placeholder="z. B. {{ ordner.jahr_vorschlag.anzeige if ordner.jahr_vorschlag else '/Pfad/zum/Ordner/Belege 2026' }}"></label>
+  </div>
+  {% if ordner_eingabe.belegt and jahr_form %}
+  <label class="zeile"><input type="checkbox" name="bestaetigt" value="1">
+    Ja, alle Dateien darin abholen</label>
+  {% endif %}
+  <div class="knopfzeile">
+    <button type="submit">Speichern</button>
+    {% if ordner.jahr_vorschlag %}
+    <button type="submit" name="vorschlag" value="1" class="leise">Vorschlag übernehmen</button>
+    <small class="gedaempft">Vorschlag für {{ ordner.jahr_vorschlag.jahr }}:
+      {{ ordner.jahr_vorschlag.anzeige }}</small>
+    {% endif %}
+  </div>
+</form>
+
+{% if ordner_fehler %}
+<script>
+/* Nach einem abgewiesenen Speichern (422) steht der Fehler weit unten -- auf
+   dem Handy unterhalb des Fensters, und die Seite stuende oben. Deshalb
+   dorthin springen und das Feld des Formulars fokussieren, zu dem er gehoert. */
+(function () {
+  var fehler = document.getElementById("ordner-fehler");
+  if (!fehler) return;
+  fehler.scrollIntoView({block: "start"});
+  var form = fehler.nextElementSibling;
+  while (form && form.tagName !== "FORM") { form = form.nextElementSibling; }
+  var feld = form && form.querySelector('input[name="pfad"]');
+  if (feld) feld.focus({preventScroll: true});
+})();
+</script>
+{% endif %}
+
+{% set stand = ordner.stand %}
+{# Nur das Ergebnis des eingestellten Ordners -- und nicht derselbe Text ein
+   zweites Mal unter dem roten Kasten der 422. #}
+{% set ergebnis = ordner.ergebnis if not (ordner_fehler and ordner.ergebnis
+   and ordner.ergebnis.fehler == ordner_fehler) else none %}
+{% if stand and stand.laeuft %}
+<div class="meldung laufend"><strong>Läuft gerade …</strong> Der Eingangsordner wird
+  abgeholt. In ein paar Sekunden <a href="/belege#eingangsordner">neu laden</a>.</div>
+{% elif ergebnis and not ergebnis.leer() %}
+<div class="meldung {% if ergebnis.fehler and not ergebnis.veraendert() %}fehler
+  {%- elif ergebnis.wartend or ergebnis.abgewiesen or ergebnis.nicht_verschoben or ergebnis.fehler %}warn
+  {%- else %}erfolg{% endif %}">
+  <strong>Zuletzt abgeholt {{ ergebnis.zeitpunkt | zeit_lokal }}:</strong>
+  {{ ergebnis.zusammenfassung() }}
+  {% if ergebnis.gebucht %}
+  <p>Automatisch gebucht{% if bezahlt_vorgabe %} — als am Belegdatum bezahlt (Vorgabe); ist
+    der Tag ein anderer, in der Liste ändern{% else %} — noch ohne Zahlung (für die EÜR zählt
+    der Tag des Abflusses; in der Liste unter „Ändern“ erfassen){% endif %}. In der Liste mit
+    „Stimmt so“ bestätigen:</p>
+  <ul>
+    {% for g in ergebnis.gebucht %}
+    <li><a href="/belege#beleg-{{ g.beleg_id }}">{{ g.originalname }}</a> — Beleg {{ g.beleg_id }}
+      {%- if g.lieferant %}, {{ g.lieferant }}{% endif %}, {{ g.brutto_cent | euro }} €</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if ergebnis.wartend %}
+  <p>Wartet in der Prüfmaske:</p>
+  <ul>
+    {% for w in ergebnis.wartend %}
+    <li>{% if w.eingangsname in ordner.im_eingang %}<a href="/belege/pruefen/{{ w.eingangsname | urlencode }}">{{ w.originalname }}</a>
+      {%- else %}{{ w.originalname }} <span class="gedaempft">(inzwischen erledigt)</span>{% endif %}
+      — {{ w.grund }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if ergebnis.schon_vorhanden %}
+  <p>Schon da, nicht noch einmal aufgenommen:</p>
+  <ul>
+    {% for s in ergebnis.schon_vorhanden %}
+    <li>{{ s.originalname }} — {% if s.beleg_id %}schon gebucht als <a href="/belege#beleg-{{ s.beleg_id }}">Beleg {{ s.beleg_id }}</a>
+      {%- elif s.eingangsname in ordner.im_eingang %}noch nicht gebucht, wartet schon <a href="/belege/pruefen/{{ s.eingangsname | urlencode }}">in der Prüfmaske</a>
+      {%- else %}lag schon im Eingang{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if ergebnis.abgewiesen %}
+  <p>Nicht übernommen:</p>
+  <ul>
+    {% for a in ergebnis.abgewiesen %}
+    <li>{{ a.originalname }} — {{ a.grund }}
+      {%- if a.verschoben %} <span class="gedaempft">Liegt jetzt im Unterordner
+        „{{ ordner.nicht_uebernommen }}“.</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if ergebnis.nicht_verschoben %}
+  <p>Erledigt, aber im Ordner liegen geblieben:</p>
+  <ul>
+    {% for n in ergebnis.nicht_verschoben %}
+    <li>{{ n.originalname }} — {{ n.grund }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if ergebnis.jahr_abweichend %}
+  <p>Datum passt nicht zum Ordnerjahr — nur ein Hinweis:</p>
+  <ul>
+    {% for h in ergebnis.jahr_abweichend %}<li>{{ h }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if ergebnis.icloud_ausstehend %}
+  <p>Noch nicht aus iCloud geladen: {{ ergebnis.icloud_ausstehend | join(', ') }} — kommt
+    beim nächsten Abholen dran.</p>
+  {% endif %}
+  {% if ergebnis.noch_im_schreiben %}
+  <p>Wird gerade noch gespeichert: {{ ergebnis.noch_im_schreiben | join(', ') }} — kommt
+    beim nächsten Abholen dran.</p>
+  {% endif %}
+</div>
+{% elif ergebnis %}
+<p class="hinweis">Zuletzt abgeholt {{ ergebnis.zeitpunkt | zeit_lokal }}:
+  {{ ergebnis.zusammenfassung() }}</p>
+{% endif %}
+</section>
+
+{# Das Ergebnis von „Alle prüfen und buchen“ -- gleich nach dem Klick
+   (sammel=1), auch wenn der Eingang danach leer ist. #}
+{% if sammel %}
+<div class="meldung {% if sammel.geblieben or sammel.fehler or sammel.vorjahre %}warn{% else %}erfolg{% endif %} nicht-drucken"
+     id="sammelergebnis" role="status">
+  <strong>Alle prüfen und buchen:</strong> {{ sammel.zusammenfassung() }}
+  {% if sammel.gebucht %}
+  <p>Gebucht — automatisch, noch nicht bestätigt; in der Liste mit „Stimmt so“ bestätigen
+    (oder unter „nur ungeklärte“ alle auf einmal):</p>
+  <ul>
+    {% for g in sammel.gebucht %}
+    <li><a href="/belege#beleg-{{ g.beleg_id }}">{{ g.originalname }}</a> — Beleg {{ g.beleg_id }}
+      {%- if g.lieferant %}, {{ g.lieferant }}{% endif %}, {{ g.brutto_cent | euro }} €
+      {%- if g.bezahlt_am %}, bezahlt am {{ g.bezahlt_am | datum_de }}
+      {%- if g.vorjahr %} <span class="chip ueberfaellig">zählt in der EÜR {{ g.vorjahr }}</span>{% endif %}
+      {%- else %}, <span class="chip gestellt">offen</span>{% endif %}
+      {%- if g.ohne_kategorie %} <span class="chip ueberfaellig">ohne Kategorie — in der Liste
+        zuordnen</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if sammel.angehaengt %}
+  <p>Vorhandenen Buchungen zugeordnet — die Datei hängt jetzt dort, Betrag und Datum des
+    Eintrags bleiben:</p>
+  <ul>
+    {% for g in sammel.angehaengt %}
+    <li>{% if g.art == 'beleg' %}<a href="/belege#beleg-{{ g.ziel_id }}">{{ g.originalname }}</a>
+      {%- else %}<a href="/einnahmen#einnahme-{{ g.ziel_id }}">{{ g.originalname }}</a>{% endif %} —
+      {{ g.bezeichnung }}
+      {%- if g.abweichungen %} <span class="chip gestellt">Abweichung</span> {{ g.abweichungen | join('; ') }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if sammel.geblieben %}
+  <p>Bleibt im Eingang:</p>
+  <ul>
+    {% for b in sammel.geblieben %}
+    <li>{% if b.eingangsname in eingang_namen %}<a href="/belege/pruefen/{{ b.eingangsname | urlencode }}">{{ b.originalname }}</a>
+      {%- else %}{{ b.originalname }}{% endif %} — {{ b.grund }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if sammel.entfernt %}
+  <p>Weggeworfen (schon gebucht): {{ sammel.entfernt | join(', ') }}</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if eingang %}
+<h2 id="eingang">Im Eingang, noch nicht gebucht</h2>
+<p class="hinweis">Diese Dateien sind nicht verloren, nur nicht erfasst. Ein Beleg braucht
+  Datum und Betrag — einen Datensatz vorher anzulegen hieße, beide zu erfinden.</p>
+{# Fuer viele Dateien auf einmal: alle sicher erkannten buchen (erst eine
+   Vorschau), oder alle wegwerfen (skriptlos in zwei Schritten). Weggeworfen
+   werden genau die hier angezeigten Dateien. #}
+{% if ohne_datei_anzahl[0] or ohne_datei_anzahl[1] %}
+{# Der Einstieg zum Zuordnen (app/logik/beleg/anhaengen.py): die Vorschau
+   von „Alle prüfen und buchen“ IST die Zuordnungsseite. #}
+{% set n_dateien = eingang | length %}{% set n_buchungen = ohne_datei_anzahl[0] + ohne_datei_anzahl[1] %}
+<p class="hinweis nicht-drucken" id="zuordnen-hinweis">{{ n_dateien }} {{ 'Datei' if n_dateien == 1 else 'Dateien' }} im Eingang
+  · {{ n_buchungen }} {{ 'Buchung' if n_buchungen == 1 else 'Buchungen' }} ohne Datei ({{ ohne_datei_anzahl[0] }}
+  {{ 'Beleg' if ohne_datei_anzahl[0] == 1 else 'Belege' }}, {{ ohne_datei_anzahl[1] }}
+  {{ 'Einnahme' if ohne_datei_anzahl[1] == 1 else 'Einnahmen' }}) ·
+  <a href="/belege/alle-buchen#zuordnen"><strong>Zuordnen</strong></a> — passt eine Datei nach
+  Betrag und Datum zu einer Buchung, schlägt die Vorschau das Anhängen vor statt einer
+  zweiten Buchung.</p>
+{% endif %}
+<div class="knopfzeile eingang-knoepfe nicht-drucken">
+  <a href="/belege/alle-buchen" class="knopf">Alle prüfen und buchen …</a>
+  <details class="loeschen">
+    <summary>Alle {{ eingang | length }} {% if eingang | length == 1 %}Datei{% else %}Dateien{% endif %} wegwerfen …</summary>
+    <form method="post" action="/belege/eingang/alle-wegwerfen">
+      {% for datei in eingang %}<input type="hidden" name="datei" value="{{ datei.name }}">{% endfor %}
+      <p class="hinweis">Gelöscht wird nur die Kopie im Tool; gebuchte Belege sind nicht
+        betroffen. Hochgeladene Originale liegen weiter bei dir, abgeholte im Eingangsordner
+        unter „{{ ordner.uebernommen }}“ (zum erneuten Abholen dort zurück in die oberste Ebene
+        legen). Aufbewahrungspflichtige Belege (§ 147 AO) müssen dort weiter liegen.</p>
+      <button type="submit" class="still">Ja, {{ eingang | length }} {% if eingang | length == 1 %}Datei{% else %}Dateien{% endif %} wegwerfen</button>
+    </form>
+  </details>
+</div>
+<table>
+  <thead><tr><th>Datei</th><th class="zahl">Größe</th><th></th></tr></thead>
+  <tbody>
+  {% for datei in eingang %}
+    <tr>
+      <td>{% if datei.original != datei.name %}{{ datei.original }}<br>{% endif %}
+        <span class="mono{% if datei.original != datei.name %} gedaempft{% endif %}">{{ datei.name }}</span>
+        {%- if eingang_gruende.get(datei.name) %}<br><small class="gedaempft">wartet: {{ eingang_gruende[datei.name] }}</small>{% endif %}</td>
+      <td class="zahl">{{ datei.groesse | dateigroesse }}</td>
+      <td class="aktionen">
+        {% if datei.buchbar %}
+        <a href="/belege/pruefen/{{ datei.name | urlencode }}">Prüfen und buchen</a>
+        {% elif datei.format_ok %}
+        {# Von Hand in den Eingang gelegt: die Endung verspricht ein Belegformat,
+           der Inhalt ist etwas anderes. #}
+        <span class="chip ueberfaellig">Inhalt passt nicht zur Endung — nicht buchbar, wegwerfen</span>
+        {% else %}
+        <span class="chip ueberfaellig">kein Belegformat — wegwerfen oder umbenennen</span>
+        {% endif %}
+        <form method="post" action="/belege/eingang/{{ datei.name | urlencode }}/wegwerfen" class="inline">
+          <button type="submit" class="still">Wegwerfen</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Erfasste Belege</h2>
+<form method="get" action="/belege" class="zeile">
+  <label>Jahr
+    <select name="jahr">
+      <option value="">alle</option>
+      {% for j in jahre %}
+        <option value="{{ j }}" {% if j | int == filter.jahr %}selected{% endif %}>{{ j }}</option>
+      {% endfor %}
+    </select></label>
+  <label>Kategorie
+    <select name="kategorie">
+      <option value="">alle</option>
+      {% for k in kategorien %}
+        <option value="{{ k.id }}" {% if k.id == filter.kategorie %}selected{% endif %}>
+          {{ k.bezeichnung }}</option>
+      {% endfor %}
+    </select></label>
+  <label class="zeile"><input type="checkbox" name="offen" value="1"
+    {% if filter.offen %}checked{% endif %}> nur ungeklärte</label>
+  <label class="zeile"><input type="checkbox" name="geloescht" value="1"
+    {% if filter.geloescht %}checked{% endif %}> gelöschte zeigen</label>
+  <label class="zeile"><input type="checkbox" name="ohne_datei" value="1"
+    {% if filter.ohne_datei %}checked{% endif %}> nur aus WISO ohne Datei</label>
+  <button type="submit">Filtern</button>
+  {% if filter.jahr or filter.kategorie or filter.offen or filter.geloescht or filter.ohne_datei %}<a href="/belege">Filter aufheben</a>{% endif %}
+</form>
+{% if ausgeblendet %}
+<p class="hinweis nicht-drucken">{{ ausgeblendet }} gelöschte{% if ausgeblendet == 1 %}r Beleg ist{% else %}
+  Belege sind{% endif %} ausgeblendet —
+  <a href="/belege?geloescht=1{% if filter.jahr %}&amp;jahr={{ filter.jahr }}{% endif %}{% if filter.kategorie %}&amp;kategorie={{ filter.kategorie }}{% endif %}">gelöschte zeigen</a>.</p>
+{% endif %}
+
+{# Unter „nur ungeklärte“: „Stimmt so“ fuer alle angezeigten auf einmal --
+   genau die Belege dieser Liste, die noch niemand bestaetigt hat. #}
+{% set unbestaetigt = belege | selectattr('geprueft_am', 'none') | list %}
+{% if filter.offen and unbestaetigt %}
+<details class="loeschen bestaetigen nicht-drucken">
+  <summary>Alle {{ unbestaetigt | length }} angezeigten bestätigen …</summary>
+  <form method="post" action="/belege/geprueft-alle">
+    {% for b in unbestaetigt %}<input type="hidden" name="beleg" value="{{ b.id }}">{% endfor %}
+    <p class="hinweis">„Stimmt so“ für jeden dieser Belege: die ausgelesenen Werte stimmen mit
+      dem Beleg überein. Eine fehlende Kategorie bleibt offen — die bitte je Beleg unter
+      „Ändern“ wählen.</p>
+    <button type="submit" class="leise">Ja, {{ unbestaetigt | length }}
+      {% if unbestaetigt | length == 1 %}Beleg{% else %}Belege{% endif %} bestätigen</button>
+  </form>
+</details>
+{% endif %}
+
+{% if belege %}
+<table class="belegliste">
+  <thead><tr><th>Datum</th><th>Lieferant</th><th>Kategorie</th>
+    <th class="zahl">Brutto</th><th class="zahl">Betrieblich</th>
+    <th>Bezahlt</th><th></th></tr></thead>
+  <tbody>
+  {% for b in belege %}
+    {% if meldung_zu == b.id and (fehler or erfolg or warnung) %}
+    {# Das Ergebnis einer Aktion an diesem Beleg (Kurs pruefen, Kartenbetrag,
+       Zahlung): direkt ueber der Zeile, der Sprung der Weiterleitung geht
+       hierher. Vorher stand es oben auf der Seite, weit ausserhalb des
+       Fensters. #}
+    <tr class="zeilenmeldung nicht-drucken"><td colspan="7">
+      <div class="meldung {% if fehler %}fehler{% elif warnung %}warn{% else %}erfolg{% endif %}" id="meldung"
+           role="{% if fehler %}alert{% else %}status{% endif %}">{{ fehler or warnung or erfolg }}</div></td></tr>
+    {% endif %}
+    <tr id="beleg-{{ b.id }}"{% if b.geloescht_am %} class="geloescht"{% endif %}>
+      <td class="datum">{{ b.belegdatum | datum_de }}
+        {%- if b.dateien %}<br><a href="/belege/{{ b.id }}/datei" class="gedaempft">Datei</a>
+          <small><a href="/belege/{{ b.id }}/datei?download=1" class="gedaempft">herunterladen</a></small>{% endif %}
+        {%- if b.mails %}<br><a href="/belege/{{ b.id }}/mail" class="gedaempft">E-Mail</a>{% endif %}
+        {%- if b.wiso_nummer %}<br><span class="chip" title="Buchung {{ b.wiso_nummer }} aus dem WISO-Export">aus WISO übernommen
+          {%- if not b.dateien %} · Datei fehlt{% endif %}</span>{% endif %}
+        {%- if b.geloescht_am %}
+          {# Geloescht: nur noch nachvollziehbar, nicht mehr zu klaeren. #}
+          <br><span class="chip storniert" title="{{ b.geloescht_grund }}">gelöscht</span>
+          <br><small class="gedaempft">{{ b.geloescht_am | zeit_lokal }} · {{ b.geloescht_grund }}</small>
+        {%- elif not b.geprueft_am %}
+          <br><span class="chip gestellt"
+            title="Noch von niemandem bestätigt — mit „Stimmt so“ bestätigen.">
+            {%- if b.automatisch %}automatisch gebucht{% else %}ungeprüft{% endif %}</span>{% endif %}</td>
+      <td>{{ b.lieferant or '—' }}
+        {%- if b.belegnummer_extern %}<br><span class="gedaempft mono">{{ b.belegnummer_extern }}</span>{% endif %}
+        {%- if b.reverse_charge %}<br><span class="chip">Reverse Charge</span>{% endif %}</td>
+      {# Ein Anlagegut geht über die AfA in die EÜR, nicht über die Kategorie:
+         ohne Kategorie ist es nicht „nicht zugeordnet“, sondern entweder schon im
+         Anlagenverzeichnis oder noch dorthin zu übernehmen. #}
+      <td>{% if b.kategorie %}{{ b.kategorie }}
+            <span class="gedaempft">KZ&nbsp;{{ b.kennzahl }}</span>
+            {%- if b.ist_anlagegut %}<br><span class="chip">Anlagegut</span>{% endif %}
+          {%- elif b.geloescht_am %}—
+          {%- elif b.ist_anlagegut and b.im_verzeichnis %}<span class="chip">Anlagegut</span>
+            <span class="chip">über AfA</span>
+          {%- elif b.ist_anlagegut %}<a href="/anlagen" class="chip gestellt"
+            title="Auf der Seite Anlagen übernehmen">Anlagegut — noch nicht im Verzeichnis</a>
+          {%- else %}<span class="chip ueberfaellig">nicht zugeordnet</span>{% endif %}</td>
+      {# Fremdwährung nachprüfbar: Fremdbetrag, Kurs und Kursdatum unter dem
+         Euro-Betrag, die Einzelheiten (Quelle, Abrufzeit, SHA-256) unter „Ändern“. #}
+      {% set u = umrechnungen.get(b.id) %}
+      <td class="zahl mono">{{ b.betrag_brutto_cent | euro }} €
+        {%- if u %}<br><span class="umrechnung">{{ u.zeile }}</span>
+          {%- if u.vergleich %}<br><span class="umrechnung">{{ u.vergleich }}</span>{% endif %}
+        {%- endif %}</td>
+      <td class="zahl mono">{{ b.betrag_betrieblich_cent | euro }} €
+        {%- if b.aufteilungsquote != 100 %}<br><span class="gedaempft">{{ b.aufteilungsquote }} %</span>{% endif %}</td>
+      <td class="datum">{% if b.bezahlt_am %}{{ b.bezahlt_am | datum_de }}
+          {%- elif b.geloescht_am %}—
+          {%- else %}<span class="chip gestellt">offen</span>{% endif %}</td>
+      <td class="aktionen">
+        {% if b.geloescht_am %}
+        {# Ein geloeschter Beleg: nur der Weg zurueck (beleg_korrektur.html). #}
+        <details{% if meldung_zu == b.id %} open{% endif %}>
+          <summary>Wiederherstellen</summary>
+          {% include "beleg_korrektur.html" %}
+        </details>
+        {% else %}
+        {% if not b.geprueft_am %}
+        <form method="post" action="/belege/{{ b.id }}/geprueft" class="inline">
+          <button type="submit" class="leise"
+                  title="Die ausgelesenen Werte stimmen mit dem Beleg überein">Stimmt so</button></form>
+        {% endif %}
+        <details{% if karte.beleg_id == b.id or meldung_zu == b.id %} open{% endif %}>
+          <summary>Ändern</summary>
+          <form method="post" action="/belege/{{ b.id }}/kategorie">
+            <label>Kategorie
+              <select name="kategorie_id">
+                <option value="">— offen —</option>
+                {% for k in kategorien %}
+                  <option value="{{ k.id }}" {% if k.id == b.kategorie_id %}selected{% endif %}>
+                    {{ k.bezeichnung }}</option>
+                {% endfor %}
+              </select></label>
+            <label>Betrieblich in Prozent
+              <input type="number" name="quote" min="0" max="100"
+                     value="{{ b.aufteilungsquote }}"></label>
+            {% if b.lieferant_id %}
+            {# Wie in der Pruefmaske: der naechste Beleg dieses Lieferanten
+               kommt vorbelegt -- und aus dem Eingangsordner automatisch. #}
+            <label class="zeile"><input type="checkbox" name="vorgabe_merken" value="1">
+              als Vorgabe für {{ b.lieferant }} merken</label>
+            {% endif %}
+            <button type="submit">Speichern</button>
+          </form>
+          {% if u %}
+          <dl class="umrechnung">
+            <dt>Währung</dt><dd>{{ u.waehrung }}</dd>
+            <dt>Fremdbetrag</dt><dd>{{ u.fremdbetrag }}</dd>
+            {% if u.kurs %}<dt>Kurs</dt><dd>1 € = {{ u.kurs }} {{ u.waehrung }}
+              <span class="gedaempft">({{ u.kurs_art }})</span></dd>
+            <dt>Kursdatum</dt><dd>{{ u.kursdatum }}</dd>{% endif %}
+            <dt>Quelle</dt><dd>{{ u.quelle }}</dd>
+            {% if u.umgerechnet %}<dt>Umgerechnet</dt><dd>{{ u.umgerechnet }} €</dd>{% endif %}
+            {% if u.karte %}<dt>Laut Kreditkarte</dt><dd>{{ u.karte }} €</dd>{% endif %}
+            {% if u.differenz %}<dt>Differenz</dt><dd>{{ u.differenz }}</dd>{% endif %}
+            {% if u.abruf %}<dt>Kurstabelle</dt><dd>abgerufen {{ u.abruf | zeit_lokal }}</dd>{% endif %}
+            {% if u.sha256 %}<dt>SHA-256</dt><dd class="mono sha">{{ u.sha256 }}</dd>{% endif %}
+          </dl>
+          <form method="post" action="/belege/{{ b.id }}/kartenbetrag">
+            <label>Betrag laut Kreditkarte
+              <small><strong>in Euro (€)</strong>: was tatsächlich abgebucht wurde — ersetzt den
+                Euro-Betrag in Beleg, Zahlung und EÜR</small>
+              <input name="betrag" inputmode="decimal" placeholder="0,00 €" autocomplete="off" required
+                     value="{% if karte.beleg_id == b.id %}{{ karte.betrag }}{% elif u.karte %}{{ u.karte }}{% endif %}"></label>
+            {% if karte.beleg_id == b.id and karte.rueckfrage %}
+            <div class="meldung fehler" role="alert" id="karte-rueckfrage">{{ karte.text }}</div>
+            <label class="zeile"><input type="checkbox" name="bestaetigt" value="1">
+              Kartenbetrag so übernehmen</label>
+            {% endif %}
+            <button type="submit">Kartenbetrag eintragen</button>
+          </form>
+          {# Der Weg zurueck: ein versehentlich eingetragener Kartenbetrag, oder
+             ein Kurs von Hand, fuer den es doch einen EZB-Kurs gibt. #}
+          {% if u.karte %}
+          <form method="post" action="/belege/{{ b.id }}/ezb-kurs">
+            <button type="submit" class="leise"
+                    title="Der Euro-Betrag wird wieder zum EZB-Kurs umgerechnet">Kartenbetrag entfernen</button>
+          </form>
+          {% elif b.id in ezb_moeglich %}
+          <form method="post" action="/belege/{{ b.id }}/ezb-kurs">
+            <button type="submit" class="leise"
+                    title="Die gespeicherte Kurstabelle hat für diesen Tag einen EZB-Kurs">Zum EZB-Kurs umrechnen</button>
+          </form>
+          {% endif %}
+          {% if u.kurs %}
+          <form method="post" action="/belege/{{ b.id }}/kurs-pruefen">
+            <button type="submit" class="leise"
+                    title="Rechnet den Kurs aus der gespeicherten EZB-Kurstabelle nach">Kurs prüfen</button>
+          </form>
+          {% endif %}
+          {% endif %}
+          {% if not b.dateien and not b.ist_eigenbeleg %}
+          {# Das Original nachtraeglich (app/logik/beleg/anhaengen.py): Betrag
+             und Datum des Belegs bleiben, Abweichungen sagt die Meldung. #}
+          <form method="post" action="/belege/{{ b.id }}/datei-anhaengen" enctype="multipart/form-data">
+            <label>Datei anhängen <small>das Original — Betrag und Datum des Belegs bleiben</small>
+              <input type="file" name="datei" required
+                     accept=".pdf,.xml,.jpg,.jpeg,.png,.tif,.tiff,.heic,.webp,.eml"></label>
+            <button type="submit" class="leise">Datei anhängen</button>
+          </form>
+          {% endif %}
+          {% if not b.bezahlt_am %}
+          <form method="post" action="/belege/{{ b.id }}/bezahlt">
+            <label>Bezahlt am <input type="date" name="datum" required></label>
+            <button type="submit">Zahlung erfassen</button>
+          </form>
+          {% endif %}
+          {# Zahlung berichtigen und Beleg loeschen (app/routen/belegkorrektur.py). #}
+          {% include "beleg_korrektur.html" %}
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="4">Betrieblich gesamt{% if anzahl_gesamt > belege | length %}
+      <small>(alle {{ anzahl_gesamt }} Belege)</small>{% endif %}</th>
+    <th class="zahl mono">{{ summe | euro }} €</th><th colspan="2"></th></tr></tfoot>
+</table>
+{% if anzahl_gesamt > belege | length %}
+<p class="hinweis">Die Liste zeigt {{ belege | length }} von {{ anzahl_gesamt }} Belegen —
+  die neuesten zuerst. Die Summe gilt für alle {{ anzahl_gesamt }}; ältere Belege über den
+  Filter „Jahr“ ansehen.</p>
+{% endif %}
+<p class="hinweis">„Betrieblich" ist der Teil, der in die EÜR geht — Bruttobetrag mal
+  betrieblicher Quote, einmal gerundet und gespeichert. Ein Beleg ohne Kategorie landet
+  in keiner Zeile und sperrt später den Jahresabschluss; ein Beleg ohne Zahlungsdatum
+  erscheint in keinem Jahr und ist der häufigste stille Fehler.</p>
+{% else %}
+<p class="leer">Noch keine Belege erfasst.</p>
+{% endif %}
+
+{% if karte.rueckfrage %}
+<script>
+/* Die Rueckfrage zum Kartenbetrag (422) steht in der aufgeklappten Zeile,
+   weit unten -- die Seite stuende sonst oben, und der Nutzer saehe nichts
+   von ihr. Deshalb dorthin springen und das Feld fokussieren, wie beim
+   Eingangsordner. */
+(function () {
+  var kasten = document.getElementById("karte-rueckfrage");
+  if (!kasten) return;
+  kasten.scrollIntoView({block: "center"});
+  var feld = kasten.closest("form").querySelector('input[name="betrag"]');
+  if (feld) feld.focus({preventScroll: true});
+})();
+</script>
+{% endif %}
+
+<h2>Belegintegrität</h2>
+<p class="hinweis">Vergleicht jede archivierte Datei mit ihrer Prüfsumme und rechnet jede
+  Umrechnung in Euro aus der gespeicherten EZB-Kurstabelle nach. Ohne diesen Lauf
+  ist die gespeicherte Prüfsumme eine Behauptung. Die Originale liegen mit Dateirechten
+  <code>0444</code> im Archiv und werden nie verändert — Korrekturen betreffen nur die
+  Zuordnung.</p>
+{% if kurstabelle %}
+<p class="hinweis">EZB-Kurstabelle im Datenordner: Kurse bis {{ kurstabelle.letzter_tag | datum_de }},
+  abgerufen {{ kurstabelle.abgerufen_utc | zeit_lokal }}
+  {%- if kurstabelle.sha256 %}, SHA-256 <span class="mono">{{ kurstabelle.sha256[:16] }}…</span>{% endif %}.
+  {%- if kurse_ursache %} Das letzte Auffrischen scheiterte: {{ kurse_ursache }}.{% endif %}</p>
+{% elif kurse_fehler %}
+<p class="hinweis">EZB-Kurstabelle: noch keine geladen. {{ kurse_fehler }}</p>
+{% endif %}
+<form method="post" action="/belege/integritaet">
+  <button type="submit">Jetzt prüfen</button>
+</form>
+{% endblock %}

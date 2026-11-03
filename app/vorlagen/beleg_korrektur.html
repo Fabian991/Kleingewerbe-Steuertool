@@ -1,0 +1,84 @@
+{#- Korrekturen an einem gebuchten Beleg (app/routen/belegkorrektur.py), in
+    der Belegliste unter „Ändern“: Zahlung berichtigen, löschen -- und bei
+    einem gelöschten Beleg das Wiederherstellen. Eingebunden aus belege.html,
+    ``b`` ist die Zeile der Liste.
+
+    Gelöscht wird skriptlos in zwei Schritten: aufklappen, Grund wählen,
+    bestätigen. Der Grund ist Pflicht; ein Anlagegut am Beleg nennt seine
+    AfA-Jahre und muss ausdrücklich mitgelöscht werden. -#}
+{% if b.geloescht_am %}
+<form method="post" action="/belege/{{ b.id }}/wiederherstellen">
+  <p class="hinweis">Gelöscht {{ b.geloescht_am | zeit_lokal }}: {{ b.geloescht_grund }}.
+    Datensatz, Zahlung und Datei sind erhalten; wiederhergestellt zählt der Beleg wieder in
+    der EÜR{% if b.ist_anlagegut %}, ein Anlagegut kommt mit ihm zurück{% endif %}.</p>
+  <button type="submit" class="leise">Beleg wiederherstellen</button>
+</form>
+{% else %}
+{% if b.bezahlt_am and b.zahlungen == 1 %}
+<form method="post" action="/belege/{{ b.id }}/zahltag">
+  <label>Zahltag ändern
+    <small>für die EÜR zählt der Tag, an dem das Geld floss
+      {%- if b.bezahlt_am[:4] | int < laufendes_jahr %} — die Zahlung steht in der
+      EÜR {{ b.bezahlt_am[:4] }}; ist sie abgegeben, ändert sie sich mit{% endif %}</small>
+    <input type="date" name="datum" required value="{{ b.bezahlt_am }}"></label>
+  <button type="submit" class="leise">Zahltag ändern</button>
+</form>
+{# Zwei Schritte wie bei der Rechnungszahlung: aufklappen, dann bestaetigen.
+   Die Warnung zum Vorjahr steht VOR dem Bestaetigen -- eine abgegebene EUeR
+   aendert sich mit. Der Grund ist freiwillig und steht im Protokoll. #}
+<details class="loeschen zahlung-zurueck"{% if meldung_zu == b.id and fehler
+                                  and fehler.startswith('Zahlung nicht zurückgenommen') %} open{% endif %}>
+  <summary>Zahlung zurücknehmen …</summary>
+  <form method="post" action="/belege/{{ b.id }}/zahlung-zuruecknehmen">
+    <p class="hinweis">Der Beleg war doch noch nicht bezahlt: die Zahlung vom
+      {{ b.bezahlt_am | datum_de }} wird entfernt, und der Beleg ist danach wieder offen. In
+      die EÜR kommt er erst wieder mit der neu erfassten Zahlung; das Protokoll behält die
+      alte.</p>
+    {% if b.bezahlt_am[:4] | int < laufendes_jahr %}
+    <p class="meldung warn">Die Zahlung steht in der EÜR {{ b.bezahlt_am[:4] }}. Ist die schon
+      abgegeben, ändert sich der Gewinn dort — dann die Erklärung berichtigen.</p>
+    {% endif %}
+    <label>Grund <small>freiwillig, steht im Protokoll</small>
+      <input name="grund" maxlength="200" autocomplete="off"></label>
+    <button type="submit" class="still">Ja, Zahlung zurücknehmen</button>
+  </form>
+</details>
+{% elif b.zahlungen > 1 %}
+<p class="hinweis">{{ b.zahlungen }} Zahlungen erfasst — Zahltag ändern und Zurücknehmen gehen
+  nur bei einer einzelnen.</p>
+{% endif %}
+{# Abgewiesen (Grund fehlt, Anlagegut nicht bestaetigt): gleich wieder offen,
+   damit der zweite Versuch nicht mit dem Aufklappen beginnt. #}
+<details class="loeschen"{% if meldung_zu == b.id and fehler and (fehler.startswith('Bitte einen Grund')
+                                or fehler.startswith('Am Beleg hängt')) %} open{% endif %}>
+  <summary>Beleg löschen …</summary>
+  <form method="post" action="/belege/{{ b.id }}/loeschen">
+    <p class="hinweis">Der Beleg verschwindet aus Liste, EÜR und Steuerrücklage. Datensatz,
+      Zahlung und Datei bleiben im Archiv und im Journal; über „gelöschte zeigen“ lässt er
+      sich wiederherstellen.</p>
+    <fieldset>
+      <legend>Grund</legend>
+      {% for g in loeschgruende %}
+      <label class="zeile"><input type="radio" name="grund" value="{{ g }}"> {{ g }}</label>
+      {% endfor %}
+      <label>oder in eigenen Worten
+        <input name="grund_frei" maxlength="200" autocomplete="off"></label>
+    </fieldset>
+    {% set gut = anlagegueter.get(b.id) %}
+    {% if gut %}
+    <p class="meldung warn">{{ gut.text(laufendes_jahr) }}</p>
+    <label class="zeile"><input type="checkbox" name="anlagegut_mit" value="1" required>
+      Anlagegut mit löschen</label>
+    {% endif %}
+    {% if b.bezahlt_am and b.bezahlt_am[:4] | int < laufendes_jahr %}
+    <p class="meldung warn">Die Zahlung steht in der EÜR {{ b.bezahlt_am[:4] }}. Ist die schon
+      abgegeben, ändert sich der Gewinn dort — dann die Erklärung berichtigen.</p>
+    {% endif %}
+    {% if b.dateien %}
+    <label class="zeile"><input type="checkbox" name="neu_erfassen" value="1">
+      Datei gleich wieder zum Prüfen in den Eingang legen</label>
+    {% endif %}
+    <button type="submit" class="still">Ja, Beleg löschen</button>
+  </form>
+</details>
+{% endif %}

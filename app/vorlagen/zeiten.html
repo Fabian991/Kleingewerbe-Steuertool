@@ -1,0 +1,389 @@
+{% extends "basis.html" %}
+{% set aktiv = 'zeiten' %}
+{% block titel %}Zeiten · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Zeiten</h1>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if hinweis %}<div class="meldung warn">{{ hinweis }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+{% if entwurf_leer %}
+<div class="meldung warn">Der Entwurf
+  <a href="/rechnung/{{ entwurf_leer }}">Rechnung {{ entwurf_leer }}</a> hat jetzt keine
+  Position mehr — verwerfen?</div>
+{% endif %}
+
+{% if timer %}
+{# Das Banner des offenen Timers -- laufend oder pausiert. Die Zahlen rechnet
+   der Server; das kleine Skript unten zaehlt die Anzeige jede Minute weiter,
+   ohne den Server zu fragen. Ohne JavaScript bleibt die Angabe vom
+   Seitenaufruf stehen. #}
+<div class="meldung {{ 'warn' if timer.verdaechtig else 'laufend' }} timer" id="timer"
+     data-netto="{{ timer.netto_sekunden }}" data-pause="{{ timer.pause_sekunden }}"
+     data-pausiert="{{ 1 if timer.pausiert else 0 }}">
+  <p>{% if timer.pausiert %}<strong>Pausiert seit {{ timer.pause_seit }}</strong> · begonnen
+    {{ timer.start_anzeige }}{% else %}<strong>Läuft seit {{ timer.start_anzeige }}</strong>{% endif %}
+    · <span class="netto">netto <span class="mono">{{ timer.minuten | dauer }}</span></span>
+    {%- if timer.pause_sekunden or timer.pausiert %} · <span class="pause">Pause
+    <span class="mono">{{ timer.pause_minuten | dauer }}</span></span>{% endif %}</p>
+  <p>{{ timer.titel }} · {{ timer.kunde }}
+    {%- if timer.abschnitte | length > 1 or timer.pausiert %}
+    <br><span class="gedaempft">Gearbeitet: {{ timer.abschnitte_text }}</span>{% endif %}</p>
+  {% if timer.verdaechtig %}
+    {# Der Rat zum Vorgehen meint Knopf und Formular, die der Druck ausblendet.
+       Volle Stunden, abgerundet: round(1) ergab "seit über 24.0 Stunden" --
+       mit Dezimalpunkt und bei 23:59 aufgerundet. #}
+    <p>Der Timer läuft seit {{ timer.minuten // 60 }} Stunden — vermutlich
+    vergessen.<span class="nicht-drucken"> Nach dem Stoppen die Dauer prüfen — in der Liste
+    unter „Dauer ändern“.</span></p>
+  {% endif %}
+  {# EIN Formular, mehrere Knoepfe: Pause, Fortsetzen, Stoppen und Speichern
+     nehmen die Beschreibung mit -- was hier getippt wurde, geht mit keinem
+     Klick verloren. Stoppen und Beschreibung landen in EINER Transaktion. #}
+  <form method="post" action="/zeiten/timer/stop" class="timer-formular">
+    <input type="hidden" name="zurueck" value="{{ zurueck }}">
+    <label>Beschreibung <small>optional — was genau getan wurde; jeder Knopf speichert sie mit</small>
+      <textarea name="beschreibung" rows="3" maxlength="2000">
+        {{- eingabe_stopp.beschreibung if eingabe_stopp else (timer.beschreibung or '') -}}
+      </textarea></label>
+    <p class="knoepfe">
+      {% if timer.pausiert %}
+      <button type="submit" formaction="/zeiten/timer/weiter">Fortsetzen</button>
+      {% else %}
+      <button type="submit" formaction="/zeiten/timer/pause">Pause</button>
+      {% endif %}
+      <button type="submit">Stoppen</button>
+      <button type="submit" class="still" formaction="/zeiten/{{ timer.id }}/bearbeiten">Nur
+        Beschreibung speichern</button>
+    </p>
+    {% if timer.pausiert %}<p class="hinweis">Stoppen aus der Pause: der Eintrag endet mit
+      dem Beginn der Pause ({{ timer.pause_seit }}), nicht jetzt. Fortsetzen an einem anderen
+      Tag legt einen neuen Eintrag für heute an.</p>{% endif %}
+  </form>
+</div>
+<script>
+/* Zaehlt die Anzeige jede Minute weiter -- laufend die Arbeitszeit, pausiert
+   die Pause. Gerechnet wie auf dem Server: Sekunden summieren, einmal
+   kaufmaennisch auf Minuten runden, Arbeitszeit mindestens eine Minute. */
+(function () {
+  var banner = document.getElementById('timer');
+  if (!banner) { return; }
+  var netto = parseInt(banner.dataset.netto, 10) || 0;
+  var pause = parseInt(banner.dataset.pause, 10) || 0;
+  var pausiert = banner.dataset.pausiert === '1';
+  var geladen = Date.now();
+  function hm(minuten) {
+    var rest = minuten % 60;
+    return Math.floor(minuten / 60) + ':' + (rest < 10 ? '0' : '') + rest;
+  }
+  function zeigen() {
+    var vergangen = Math.floor((Date.now() - geladen) / 1000);
+    var feldNetto = banner.querySelector('.netto .mono');
+    var feldPause = banner.querySelector('.pause .mono');
+    if (feldNetto && !pausiert) {
+      feldNetto.textContent = hm(Math.max(1, Math.floor((netto + vergangen + 30) / 60)));
+    }
+    if (feldPause && pausiert) {
+      feldPause.textContent = hm(Math.floor((pause + vergangen + 30) / 60));
+    }
+  }
+  setInterval(zeigen, 60000);
+})();
+</script>
+{% else %}
+{# Nach einer Abweisung (422) stehen die Eingaben in ``eingabe_timer`` und
+   werden wieder eingesetzt -- vorher war nach jeder Meldung alles leer. #}
+<form method="post" action="/zeiten/timer/start" class="zeile" id="timer-start">
+  <input type="hidden" name="zurueck" value="{{ zurueck }}">
+  <select name="kunde_id" required aria-label="Kunde für den Timer">
+    <option value="">Kunde wählen …</option>
+    {% for k in kunden %}<option value="{{ k.id }}" {% if eingabe_timer.kunde_id == k.id | string %}selected{% endif %}>{{ k.name }}{% if k.doppelt %} ({{ k.kundennummer }}, {{ k.ort }}){% endif %}</option>{% endfor %}
+  </select>
+  <input name="titel" required placeholder="Woran arbeitest du?" list="leistungen"
+         aria-label="Woran arbeitest du? (Titel für den Timer)" value="{{ eingabe_timer.titel or '' }}">
+  <textarea name="beschreibung" rows="2" maxlength="2000"
+            placeholder="Woran genau? (optional — lässt sich beim Stoppen ergänzen)"
+            aria-label="Beschreibung für den Timer (optional)">{{ eingabe_timer.beschreibung or '' }}</textarea>
+  <button type="submit">Timer starten</button>
+</form>
+{% endif %}
+
+<datalist id="leistungen">
+  {% for l in leistungen %}<option value="{{ l.titel }}">{% endfor %}
+</datalist>
+
+<h2>Nachträglich erfassen</h2>
+{# Nach einer Abweisung (422) stehen die Eingaben in ``eingabe``. Der Kunde
+   kommt sonst aus dem Filter -- wer nach einem Kunden filtert, erfasst meist
+   fuer ihn. #}
+{% set kunde_wahl = (eingabe.kunde_id if 'kunde_id' in eingabe else (filter.kunde or '')) | string %}
+<form method="post" action="/zeiten" class="zeile" id="erfassen">
+  <input type="hidden" name="zurueck" value="{{ zurueck }}">
+  <select name="kunde_id" required aria-label="Kunde">
+    <option value="">Kunde …</option>
+    {% for k in kunden %}
+      <option value="{{ k.id }}" {% if kunde_wahl == k.id | string %}selected{% endif %}>{{ k.name }}
+        {%- if k.doppelt %} ({{ k.kundennummer }}, {{ k.ort }}){% endif %}</option>
+    {% endfor %}
+  </select>
+  <input name="datum" type="date" value="{{ eingabe.datum if 'datum' in eingabe else heute }}"
+         max="{{ heute }}" required aria-label="Datum">
+  <input name="titel" required placeholder="Titel" list="leistungen" aria-label="Titel"
+         value="{{ eingabe.titel or '' }}">
+  <input name="dauer" required placeholder="1:45" size="7" aria-label="Dauer"
+         title="1:45 · 1h45 · 1,75 · 105 · 90min" value="{{ eingabe.dauer or '' }}">
+  <textarea name="beschreibung" rows="3" maxlength="2000" placeholder="Beschreibung (optional)"
+            aria-label="Beschreibung (optional)">{{ eingabe.beschreibung or '' }}</textarea>
+  <button type="submit">Hinzufügen</button>
+</form>
+{# "nicht-drucken": der Hinweis gehoert zum Formular darueber, und das blendet
+   der Druck aus -- sonst stuende er auf Papier allein unter "Zeiten". #}
+<p class="hinweis nicht-drucken">Dauer: <code>1:45</code>, <code>1h45</code>, <code>1,75</code> oder
+  <code>105</code>. Eine blanke Zahl gilt als Minuten. Die Beschreibung darf mehrzeilig sein
+  (höchstens 2.000 Zeichen); das Feld lässt sich unten rechts aufziehen.</p>
+{# Die Beschreibungsvorlage aus dem Leistungskatalog: sobald ein Titel gewaehlt
+   ist, wird eine LEERE Beschreibung damit vorbelegt -- beim Erfassen und beim
+   Timer-Start. Ohne JavaScript aendert sich nichts, die Formulare
+   funktionieren genauso wie vorher. #}
+{% if vorlagen %}
+<script type="application/json" id="beschreibungsvorlagen">{{ vorlagen | tojson }}</script>
+<script>
+(function () {
+  var daten = document.getElementById('beschreibungsvorlagen');
+  if (!daten) { return; }
+  var vorlagen = {};
+  try {
+    var roh = JSON.parse(daten.textContent || '{}');
+    Object.keys(roh).forEach(function (name) { vorlagen[name.trim().toLowerCase()] = roh[name]; });
+  } catch (fehler) { return; }
+  ['erfassen', 'timer-start'].forEach(function (kennung) {
+    var formular = document.getElementById(kennung);
+    if (!formular) { return; }
+    var titel = formular.querySelector('input[name="titel"]');
+    var beschreibung = formular.querySelector('[name="beschreibung"]');
+    if (!titel || !beschreibung) { return; }
+    function vorschlagen() {
+      if (beschreibung.value.trim()) { return; }
+      var vorlage = vorlagen[titel.value.trim().toLowerCase()];
+      if (vorlage) { beschreibung.value = vorlage; }
+    }
+    titel.addEventListener('change', vorschlagen);
+    titel.addEventListener('blur', vorschlagen);
+  });
+})();
+</script>
+{% endif %}
+
+{# Was aus den offenen Zeiten auf der Rechnung wuerde -- aus derselben
+   Rechnung wie der Entwurf. Erfasst wird ungerundet; gerundet wird erst je
+   Rechnungsposition, und genau das soll hier vorher sichtbar sein. #}
+{% if offen %}
+<h2>Noch nicht abgerechnet</h2>
+<ul class="abrechenbar">
+  {% for o in offen %}
+  <li><strong>{{ o.kunde }}:</strong>
+    <span class="mono">{{ o.erfasst | dauer }}</span> erfasst →
+    <span class="mono">{{ o.abrechenbar | dauer }}</span> abrechenbar
+    {%- if o.betrag_cent is not none %} · <span class="mono">{{ o.betrag_cent | euro }} €</span>{% endif %}
+    <span class="gedaempft">({% if o.gerundet %}Rundung je Position: {{ o.regel.text }}
+      {%- else %}minutengenau{% endif %}, Gruppierung {{ o.gruppierung }}
+      {%- if o.regel.quelle == 'KUNDE' %}, Regel des Kunden{% endif %})</span>
+    <a class="nicht-drucken" href="/rechnung/neu?kunde={{ o.kunde_id }}">Rechnung erstellen</a></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h2>Erfasst
+  {% if summe_minuten %}<span class="gedaempft">· {{ summe_minuten | dezimalstunden }} h
+    ({{ summe_minuten | dauer }})</span>{% endif %}</h2>
+
+<form method="get" action="/zeiten" class="zeile">
+  <select name="kunde" aria-label="Kunde filtern">
+    <option value="">alle Kunden</option>
+    {% for k in filter_kunden %}
+      <option value="{{ k.id }}" {% if filter.kunde == k.id %}selected{% endif %}>{{ k.name }}
+        {%- if k.doppelt %} ({{ k.kundennummer }}, {{ k.ort }}){% endif %}
+        {%- if not k.aktiv %} (stillgelegt){% endif %}</option>
+    {% endfor %}
+  </select>
+  <select name="status" aria-label="Status filtern">
+    <option value="">alle Status</option>
+    {% for s in ['AUFGESCHRIEBEN','IM_ENTWURF','IN_RECHNUNG_GESTELLT','BEZAHLT',
+                 'OHNE_BERECHNUNG_GESTELLT','NICHT_ABRECHENBAR','ABGESCHRIEBEN',
+                 'STORNIERT_GEBUNDEN'] %}
+      <option value="{{ s }}" {% if filter.status == s %}selected{% endif %}>
+        {{ s | status_text }}</option>
+    {% endfor %}
+  </select>
+  <input name="von" type="date" value="{{ filter.von or '' }}" aria-label="von">
+  <input name="bis" type="date" value="{{ filter.bis or '' }}" aria-label="bis">
+  <button type="submit">Filtern</button>
+</form>
+
+{% if anzahl > gezeigt %}
+<p class="hinweis">Die Liste zeigt die neuesten {{ gezeigt }} von {{ anzahl }} Einträgen.
+  Die Summe oben zählt alle.<span class="nicht-drucken"> Mit dem Zeitraumfilter lassen sich
+  ältere Einträge anzeigen.</span></p>
+{% endif %}
+
+{# Feste Spaltenbreiten: jeder Tag ist eine eigene Tabelle, und mit
+   automatischer Breite standen Status und Betrag in jedem Block woanders. #}
+{% for tag in tage %}
+<h3 class="tag">{{ tag.datum | datum_de }} <span class="gedaempft">{{ tag.minuten | dauer }}</span></h3>
+<table class="zeitenliste">
+  <colgroup><col class="sp-dauer"><col><col class="sp-status"><col class="sp-betrag"><col class="sp-aktionen nicht-drucken"></colgroup>
+  <tbody>
+  {% for z in tag.eintraege %}
+    <tr>
+      <td class="mono">{{ z.dauer_minuten | dauer }}</td>
+      <td>
+        <strong>{{ z.titel }}</strong> · {{ z.kunde }}
+        {% if z.abschnitte_teile %}<br><span class="gedaempft abschnitte">
+          {%- for teil in z.abschnitte_teile %}<span class="abschnitt">{{ teil }}</span>
+          {%- if not loop.last %}, {% endif %}{% endfor %}
+          {%- if z.pause_minuten %} (Pause {{ z.pause_minuten | dauer }}){% endif %}
+          {%- if z.abschnitte_minuten %} · korrigiert, die Abschnitte ergeben
+          {{ z.abschnitte_minuten | dauer }}{% endif %}</span>{% endif %}
+        {% if z.beschreibung %}<br><span class="gedaempft beschreibung">{{ z.beschreibung }}</span>{% endif %}
+        {% if z.grund %}<br><span class="gedaempft">Grund: {{ z.grund }}</span>{% endif %}
+        {% if z.abgeschrieben_grund %}<br><span class="gedaempft">Abgeschrieben: {{ z.abgeschrieben_grund }}</span>{% endif %}
+      </td>
+      <td>
+        <span class="chip {{ z.status | lower }}">{{ z.status | status_text }}</span>
+        {% if z.abrechnungsmodus == 'KULANZ' and z.status != 'OHNE_BERECHNUNG_GESTELLT' %}
+          <span class="chip kulanz">Kulanz</span>
+        {% endif %}
+        {% if z.laeuft %}{% if z.pausiert %}<span class="chip laufend">pausiert</span>
+          {%- else %}<span class="chip laufend">läuft</span>{% endif %}{% endif %}
+        {% if z.rechnung_nummer %}<br><span class="gedaempft mono">{{ z.rechnung_nummer }}</span>{% endif %}
+      </td>
+      {# Ein laufender Timer hat noch keinen Wert: er ist nicht abrechenbar. #}
+      <td class="zahl mono">{% if z.wert_cent and not z.laeuft %}{{ z.wert_cent | euro }} €{% endif %}</td>
+      <td class="aktionen">
+        {% if z.status in ('AUFGESCHRIEBEN', 'IM_ENTWURF') %}
+          {% if z.laeuft %}
+            {# Ein laufender Timer hat noch keine Dauer: erst stoppen. Loeschen
+               bleibt -- das ist der Abbruch. #}
+          {% elif z.abrechnungsmodus == 'KULANZ' %}
+            <form method="post" action="/zeiten/{{ z.id }}/modus" class="inline">
+              <input type="hidden" name="zurueck" value="{{ zurueck }}">
+              <input type="hidden" name="modus" value="STUNDEN">
+              <button type="submit" class="still">wieder berechnen</button>
+            </form>
+            <details>
+              <summary>Abschreiben</summary>
+              <form method="post" action="/zeiten/{{ z.id }}/abschreiben">
+                <input type="hidden" name="zurueck" value="{{ zurueck }}">
+                <p class="hinweis">Erscheint auf keiner Rechnung — der Kunde erfährt
+                  nichts davon.</p>
+                <input name="grund" required placeholder="Grund, z. B. vergessen"
+                       aria-label="Grund für das Abschreiben">
+                <button type="submit">Abschreiben</button>
+              </form>
+            </details>
+          {% else %}
+            <details>
+              <summary>ohne Berechnung</summary>
+              <form method="post" action="/zeiten/{{ z.id }}/modus">
+                <input type="hidden" name="zurueck" value="{{ zurueck }}">
+                <input type="hidden" name="modus" value="KULANZ">
+                <p class="hinweis">Erscheint mit 0,00 € auf der Rechnung — der Kunde
+                  sieht den Verzicht.</p>
+                <input name="grund" required placeholder="Grund, z. B. Kulanz"
+                       aria-label="Grund für die Kulanz">
+                <button type="submit">Als Kulanz buchen</button>
+              </form>
+              <form method="post" action="/zeiten/{{ z.id }}/abschreiben">
+                <input type="hidden" name="zurueck" value="{{ zurueck }}">
+                <p class="hinweis">Erscheint auf keiner Rechnung — der Kunde erfährt
+                  nichts davon.</p>
+                <input name="grund" required placeholder="Grund, z. B. vergessen"
+                       aria-label="Grund für das Abschreiben">
+                <button type="submit">Abschreiben</button>
+              </form>
+            </details>
+          {% endif %}
+          {% if not z.laeuft %}
+            {# Die Korrektur nach einem vergessenen Timer ("Dauer prüfen"). Auf
+               einer festgeschriebenen Rechnung gibt es sie nicht: nur Storno. #}
+            <details>
+              <summary>Dauer ändern</summary>
+              <form method="post" action="/zeiten/{{ z.id }}/dauer">
+                <input type="hidden" name="zurueck" value="{{ zurueck }}">
+                <input name="dauer" required size="7" value="{{ z.dauer_minuten | dauer }}"
+                       title="1:45 · 1h45 · 1,75 · 105 · 90min" aria-label="Neue Dauer">
+                <button type="submit">Speichern</button>
+                {% if z.status == 'IM_ENTWURF' %}<p class="hinweis">Der Entwurf wird
+                  neu berechnet.</p>{% endif %}
+              </form>
+            </details>
+          {% endif %}
+          {% if z.status == 'AUFGESCHRIEBEN' and z.loeschbar %}
+            <form method="post" action="/zeiten/{{ z.id }}/loeschen" class="inline">
+              <input type="hidden" name="zurueck" value="{{ zurueck }}">
+              <button type="submit" class="still">Löschen</button>
+            </form>
+          {% endif %}
+        {% elif z.status == 'NICHT_ABRECHENBAR' %}
+          <details>
+            <summary>Dauer ändern</summary>
+            <form method="post" action="/zeiten/{{ z.id }}/dauer">
+              <input type="hidden" name="zurueck" value="{{ zurueck }}">
+              <input name="dauer" required size="7" value="{{ z.dauer_minuten | dauer }}"
+                     title="1:45 · 1h45 · 1,75 · 105 · 90min" aria-label="Neue Dauer">
+              <button type="submit">Speichern</button>
+            </form>
+          </details>
+          <form method="post" action="/zeiten/{{ z.id }}/modus" class="inline">
+            <input type="hidden" name="zurueck" value="{{ zurueck }}">
+            <input type="hidden" name="modus" value="STUNDEN">
+            <button type="submit" class="still">wieder berechnen</button>
+          </form>
+          {% if z.loeschbar %}
+            <form method="post" action="/zeiten/{{ z.id }}/loeschen" class="inline">
+              <input type="hidden" name="zurueck" value="{{ zurueck }}">
+              <button type="submit" class="still">Löschen</button>
+            </form>
+          {% endif %}
+        {% elif z.status == 'STORNIERT_GEBUNDEN' %}
+          <form method="post" action="/zeiten/{{ z.id }}/freigeben" class="inline">
+            <input type="hidden" name="zurueck" value="{{ zurueck }}">
+            <button type="submit" class="still">Freigeben</button>
+          </form>
+        {% elif z.status == 'ABGESCHRIEBEN' %}
+          <form method="post" action="/zeiten/{{ z.id }}/zuruecknehmen" class="inline">
+            <input type="hidden" name="zurueck" value="{{ zurueck }}">
+            <button type="submit" class="still">Zurücknehmen</button>
+          </form>
+        {% endif %}
+        {# Titel und Beschreibung nachtragen -- nicht auf einer festgeschriebenen
+           (oder stornierten, nicht freigegebenen) Rechnung: deren
+           Einzelnachweis kommt aus genau diesen Feldern. Den laufenden Timer
+           beschreibt das Banner oben. Nach einer Abweisung (422) steht das
+           Formular offen und mit den Eingaben da. #}
+        {% if not z.laeuft and z.status in ('AUFGESCHRIEBEN', 'IM_ENTWURF', 'NICHT_ABRECHENBAR', 'ABGESCHRIEBEN') %}
+          {% set neu = eingabe_text if eingabe_text.id == z.id | string else none %}
+          <details {% if neu %}open{% endif %}>
+            <summary>Text ändern</summary>
+            <form method="post" action="/zeiten/{{ z.id }}/bearbeiten">
+              <input type="hidden" name="zurueck" value="{{ zurueck }}">
+              <input type="hidden" name="version" value="{{ z.version }}">
+              <input name="titel" required list="leistungen" aria-label="Titel"
+                     value="{{ neu.titel if neu else z.titel }}">
+              <textarea name="beschreibung" rows="4" maxlength="2000" aria-label="Beschreibung"
+                        placeholder="Beschreibung (optional)">{{ neu.beschreibung if neu else (z.beschreibung or '') }}</textarea>
+              <button type="submit">Speichern</button>
+              {% if z.status == 'IM_ENTWURF' %}<p class="hinweis">Der Entwurf wird
+                neu berechnet.</p>{% endif %}
+            </form>
+          </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Keine Einträge für diese Auswahl.</p>
+{% endfor %}
+{% endblock %}

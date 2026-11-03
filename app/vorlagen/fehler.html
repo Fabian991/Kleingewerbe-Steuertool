@@ -1,0 +1,13 @@
+{% extends "basis.html" %}
+{% block titel %}{{ ueberschrift }} · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>{{ ueberschrift }}</h1>
+<div class="meldung fehler">
+  {% for satz in saetze %}<p>{{ satz }}</p>{% endfor %}
+</div>
+{% if technisch %}
+<p class="hinweis">Technischer Grund, falls du den Fehler melden willst:</p>
+<pre class="mono">{{ technisch }}</pre>
+{% endif %}
+<p><a class="knopf still" href="{{ zurueck }}">Zurück</a> <a href="/">Zur Übersicht</a></p>
+{% endblock %}

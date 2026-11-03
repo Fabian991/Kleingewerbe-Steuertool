@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>{% if vorschau %}ENTWURF – {% endif %}{{ dokumenttitel }}{% if r.nummer %} {{ r.nummer }}{% endif %}</title>
+<link rel="stylesheet" href="rechnung_pdf.css">
+</head>
+<body>
+
+{#
+  Die Vorschau eines Entwurfs. Feststehend (position: fixed), damit es auf
+  JEDER Seite steht: eine weitergeleitete Vorschau darf auf keiner Seite wie
+  eine Rechnung aussehen -- sie hat keine Nummer und ist nicht festgeschrieben.
+#}
+{% if vorschau %}<div class="wasserzeichen">ENTWURF – keine Rechnung</div>{% endif %}
+
+{#
+  Der Briefkopf liegt im normalen Fluss und hat eine feste Hoehe. Nur die Bloecke
+  DARIN sind absolut positioniert, damit das Anschriftfeld millimetergenau im
+  Fensterbereich sitzt. Die Positionstabelle darf NIE absolut positioniert sein:
+  ein absolut positionierter Block paginiert nicht, und ab etwa 30 Positionen
+  fiele der Rest lautlos aus dem Dokument.
+
+  Aufteilung nach DIN 5008 Form B:
+    0 – 45 mm     Kopfbereich: Name gross, Anschrift und Kontakt
+    45 – 62,7 mm  Zusatz- und Vermerkzone, unten darin die Ruecksendeangabe
+    62,7 – 90 mm  Anschriftzone, hoechstens sechs Zeilen
+    rechts ab 50 mm der Informationsblock
+#}
+<header class="briefkopf">
+  {# Falz- und Lochmarken an der Papierkante, nur auf Seite 1: sie gehoeren
+     zum Briefbogen. Als position: fixed lagen sie an der TEXTkante und auf
+     Folgeseiten mitten in der Positionsspalte. #}
+  <div class="marke falz-oben"></div>
+  <div class="marke lochmarke"></div>
+  <div class="marke falz-unten"></div>
+
+  <div class="kopf-name {{ druck.name_groesse }}">{{ druck.name }}</div>
+
+  {# Kontaktweg im Briefkopf. Keine Pflichtangabe -- § 34a Satz 1 Nr. 1 UStDV
+     verlangt Name und Anschrift --, aber der Weg, auf dem eine Rueckfrage zur
+     Rechnung ankommt. #}
+  <div class="kopf-kontakt">
+    {% if absender.logo_pfad %}<img class="logo" src="{{ absender.logo_pfad }}" alt="">{% endif %}
+    <div>{{ absender.strasse }}</div>
+    <div>{{ absender.plz }} {{ absender.ort }}</div>
+    {% if absender.telefon %}<div>Tel. {{ absender.telefon }}</div>{% endif %}
+    {% if absender.email %}<div>{{ absender.email }}</div>{% endif %}
+  </div>
+
+  {# Unten in der Vermerkzone, nach unten verankert: eine zweite Zeile waechst
+     nach OBEN und beruehrt die Anschrift nie. Deshalb wird nichts
+     abgeschnitten -- frueher endete hier "… · 20095 Hambu". Umbrochen wird
+     nur zwischen den Teilen, der Punkt bleibt am Zeilenende. #}
+  <div class="ruecksendeangabe{% if druck.ruecksendeangabe_lang %} lang{% endif %}">
+    {%- for teil in druck.ruecksendeangabe_teile -%}
+    <span class="teil">{{ teil }}{% if not loop.last %} ·{% endif %}</span>{% if not loop.last %} {% endif %}
+    {%- endfor -%}
+  </div>
+
+  <div class="anschriftfeld">
+    {{ empfaenger.rechnungsname or empfaenger.name }}<br>
+    {% if empfaenger.ansprechpartner %}{{ empfaenger.ansprechpartner }}<br>{% endif %}
+    {{ empfaenger.strasse }}<br>
+    {{ empfaenger.plz }} {{ empfaenger.ort }}
+    {# Der Laendername in Grossbuchstaben als letzte Zeile, DIN 5008. #}
+    {% if empfaenger.land and empfaenger.land != 'DE' %}<br>{{ empfaenger.land | land_name | upper }}{% endif %}
+  </div>
+
+  <div class="infoblock">
+    <table>
+      <tr><th>{{ dokumenttitel }}-Nr.</th>
+        <td>{% if r.nummer %}{{ r.nummer }}{% else %}<span class="platzhalter">wird beim
+          Festschreiben vergeben</span>{% endif %}</td></tr>
+      <tr><th>Datum</th><td>{{ r.datum | datum_de }}</td></tr>
+      {% if empfaenger.kundennummer %}
+      <tr><th>Kundennummer</th><td>{{ empfaenger.kundennummer }}</td></tr>{% endif %}
+      {#
+        Die USt-IdNr. des Empfaengers steht nur auf einer Reverse-Charge-Rechnung.
+        Dort ist sie der Nachweis, dass der Empfaenger Unternehmer ist und die
+        Leistung deshalb nach § 3a Abs. 2 UStG an seinem Sitz steuerbar ist.
+        Auf einer Inlandsrechnung hat sie keine Funktion und waere nur Rauschen.
+      #}
+      {% if r.leistungsort == 'EU_B2B_REVERSE_CHARGE' and empfaenger.ust_idnr %}
+      <tr><th>USt-IdNr. Empfänger</th><td>{{ empfaenger.ust_idnr }}</td></tr>{% endif %}
+      {# Keine Pflichtangabe nach § 34a Satz 1 UStDV, deshalb abwaehlbar. Bei
+         Regelbesteuerung erzwingt die Pruefung ihn wieder (§ 14 Abs. 4 Nr. 6 UStG). #}
+      {% if r.leistung_von and r.leistungszeitraum_zeigen %}
+      <tr><th>Leistungszeitraum</th>
+          <td>{{ r.leistung_von | datum_de }}{% if r.leistung_bis != r.leistung_von %}
+              – {{ r.leistung_bis | datum_de }}{% endif %}</td></tr>{% endif %}
+    </table>
+  </div>
+</header>
+
+<h1>{{ dokumenttitel }}{% if r.nummer %} {{ r.nummer }}{% endif %}</h1>
+
+{# Die Betreffzeile. Keine Pflichtangabe -- § 34a UStDV kennt sie nicht --, aber
+   die Zeile, nach der der Empfaenger die Rechnung in seiner Ablage wiederfindet.
+   Normal gesetzt und nicht fett: die Ueberschrift darueber traegt schon das
+   Wort "Rechnung". #}
+{% if r.betreff %}<p class="betreff">{{ r.betreff }}</p>{% endif %}
+
+{% if r.typ == 'STORNO' and storniert %}
+<p class="bezug">Storno zu Rechnung {{ storniert.nummer }} vom {{ storniert.datum | datum_de }}.
+  {% if r.storno_grund %}Grund: {{ r.storno_grund }}{% endif %}</p>
+{% endif %}
+
+{# Korrigieren (Rechnungsablauf): die Ersatzrechnung nennt die ersetzte. Der
+   Bezug ueber die Nummer ist der, den der Empfaenger in seiner Ablage findet
+   (UStAE 14.11 Abs. 1). Eigener Block, unabhaengig vom Layout darum herum. #}
+{% if ersetzt and ersetzt.nummer %}
+<p class="bezug">Diese Rechnung ersetzt Rechnung Nr. {{ ersetzt.nummer }} vom
+  {{ ersetzt.datum | datum_de }}{% if ersetzt.storno_nummer %} (storniert mit
+  Nr. {{ ersetzt.storno_nummer }}){% endif %}.</p>
+{% endif %}
+
+{# Ein mehrzeiliges Textfeld; die Umbrueche bleiben wie beim Schlusstext. #}
+{% if r.einleitung %}<p class="einleitung">{{ r.einleitung }}</p>{% endif %}
+
+{#
+  Eine Zeile mit langem Text darf ueber den Seitenwechsel brechen: eine
+  Beschreibung von 90 Zeilen passt auf keine Seite, und "nicht trennen"
+  schob sie dann auf die naechste -- zurueck blieb eine Seite mit nichts als
+  der Ueberschrift, und der Tabellenkopf fehlte danach.
+#}
+{% macro lang(text) -%}
+  {%- if text and (text | length > 400 or text.count('\n') > 8) %} class="lang"{% endif -%}
+{%- endmacro %}
+
+<table class="positionen">
+  <thead>
+    <tr>
+      <th class="nr">Pos.</th>
+      <th class="text">Leistung</th>
+      <th class="zahl">Menge</th>
+      <th class="einheit">Einheit</th>
+      <th class="zahl">Einzelpreis</th>
+      <th class="zahl">Betrag</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in positionen %}
+    <tr{{ lang(p.untertext) }}>
+      <td class="nr">{{ p.pos_nr }}</td>
+      <td class="text">
+        {{ p.bezeichnung }}
+        {%- if p.untertext %}<div class="untertext">{{ p.untertext }}</div>{% endif %}
+        {%- if p.nachlass_cent %}<div class="untertext kulanz">{{ p.nachlass_grund }}
+          – nicht berechnet</div>{% endif %}
+      </td>
+      {#
+        darstellung = 'NUR_TEXT' ist der Pauschalfall: "Affiliate Provision ·
+        Pauschale · 636,46 €". Menge 1 und Einzelpreis gleich Betrag zu drucken
+        ist nicht falsch, aber es behauptet eine Mengenrechnung, die es nicht
+        gibt -- und bei einer Pauschale ist die Menge keine Information,
+        sondern Fuellmaterial.
+      #}
+      {% if p.darstellung == 'NUR_TEXT' %}
+      <td class="zahl"></td>
+      <td class="einheit">Pauschale</td>
+      <td class="zahl"></td>
+      {% else %}
+      <td class="zahl">{{ p.menge_tausendstel | menge }}</td>
+      <td class="einheit">{{ p.einheit | einheit_de }}</td>
+      <td class="zahl">{{ p.einzelpreis_cent | euro }}</td>
+      {% endif %}
+      <td class="zahl">
+        {%- if p.nachlass_cent and p.betrag_cent == 0 %}–{% else %}{{ p.betrag_cent | euro }}{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr class="summe">
+      <td colspan="5">Gesamtbetrag</td>
+      <td class="zahl">{{ r.brutto_cent | euro }} €</td>
+    </tr>
+  </tfoot>
+</table>
+
+{#
+  Kein Umsatzsteuerfeld, nirgends -- auch kein "0,00 € USt" und kein "0 %".
+  Ein Kleinunternehmer, der Umsatzsteuer ausweist, schuldet sie nach
+  § 14c Abs. 1 UStG.
+
+  WELCHER Hinweis hier steht, entscheidet der Leistungsort, und er steht als
+  Schnappschuss in der Rechnung:
+
+  * Inland -> § 19 Abs. 1 UStG, Steuerbefreiung.
+  * EU-B2B -> "Steuerschuldnerschaft des Leistungsempfaengers"
+    (§ 14a Abs. 1 Satz 1 UStG). Der § 19-Hinweis waere hier FALSCH: er
+    behauptete eine Steuerbefreiung, wo der Umsatz in Deutschland gar nicht
+    steuerbar ist (§ 3a Abs. 2 UStG).
+  * Drittland -> ein neutraler Satz; vorgeschrieben ist dort nichts, und
+    "Reverse Charge" gibt es ausserhalb der EU nicht.
+
+  Gesetzt wird der Text beim Anlegen des Entwurfs, damit er mit der Rechnung
+  festgeschrieben ist und sich nicht aendert, wenn der Kunde umzieht.
+#}
+<p class="hinweis-19">{{ r.hinweis_19_text or absender.hinweis_19_text }}</p>
+
+{% if r.leistungsort == 'EU_B2B_REVERSE_CHARGE' %}
+<p class="klein">Die Umsatzsteuer schuldet der Leistungsempfänger
+  (Art. 196 der Richtlinie 2006/112/EG). Im Inland nicht steuerbare Leistung,
+  Leistungsort beim Empfänger nach § 3a Abs. 2 UStG.</p>
+{% endif %}
+
+{% if r.rundung_hinweis %}<p class="klein">{{ r.rundung_hinweis }}</p>{% endif %}
+
+{#
+  Der Faelligkeitsabsatz ist keine Pflichtangabe. Wer wie bisher ohne
+  Zahlungsziel arbeitet, schaltet ihn in der Einrichtung ab; die Bankverbindung
+  steht dann immer noch in der Fusszeile.
+#}
+{# "!= 0" und nicht einfach wahr/falsch: ein Schnappschuss aus der Zeit vor
+   dieser Spalte liefert None, und damals stand der Absatz auf jeder Rechnung.
+   Eine spaeter erzeugte Kopie soll aussehen wie die versendete. #}
+{% if r.typ == 'RECHNUNG' and r.brutto_cent > 0 and absender.zahlungsziel_zeigen != 0 %}
+<div class="zahlung">
+  {% if absender.iban %}
+  <p>Bitte überweisen Sie den Betrag von {{ r.brutto_cent | euro }} € bis zum
+    <strong>{{ r.faellig_am | datum_de }}</strong> auf folgendes Konto:</p>
+  {# Jede Angabe in EINER Zeile und als Text, nicht als Bild: so laesst sich
+     die IBAN abschreiben, nachpruefen und kopieren. Im Fliesstext brach sie
+     zwischen zwei Vierergruppen um. #}
+  <table class="konto">
+    <tr><th>Kontoinhaber</th><td>{{ druck.kontoinhaber }}</td></tr>
+    <tr><th>IBAN</th><td class="nowrap">{{ absender.iban | iban }}</td></tr>
+    {% if absender.bic %}<tr><th>BIC</th><td class="nowrap">{{ absender.bic }}</td></tr>{% endif %}
+    {% if absender.institut %}<tr><th>Bank</th><td>{{ absender.institut }}</td></tr>{% endif %}
+    <tr><th>Verwendungszweck</th>
+      <td class="nowrap">{% if r.nummer %}{{ r.nummer }}{% else %}<span class="platzhalter">Rechnungsnummer
+        (folgt)</span>{% endif %}</td></tr>
+  </table>
+  {% else %}
+  <p>Bitte überweisen Sie den Betrag von {{ r.brutto_cent | euro }} € bis zum
+    <strong>{{ r.faellig_am | datum_de }}</strong>.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# Der Schlusstext traegt oft eine Aufstellung ("Leistungsüberblick" / "61
+   Bestellungen"). Ein <p> kollabiert die Umbrueche zu einem Fliesstext --
+   white-space: pre-line haelt sie. #}
+{% if r.schluss %}<p class="schluss">{{ r.schluss }}</p>{% endif %}
+
+{% if nachweis %}
+<div class="nachweis">
+  <h2>Einzelnachweis</h2>
+  <table class="positionen klein">
+    <thead><tr><th class="datum">Datum</th><th class="text">Leistung</th><th class="zahl">Dauer</th>
+      <th class="zahl">Stunden</th></tr></thead>
+    <tbody>
+    {% for z in nachweis %}
+      <tr{{ lang(z.beschreibung) }}>
+        <td class="datum">{{ z.datum }}</td>
+        <td class="text">{{ z.titel }}{% if z.beschreibung %}
+          <div class="untertext">{{ z.beschreibung }}</div>{% endif %}
+          {%- if z.kulanz %}<div class="untertext kulanz">ohne Berechnung</div>{% endif %}</td>
+        <td class="zahl">{{ z.minuten | dauer }}</td>
+        <td class="zahl">{{ z.minuten | dezimalstunden }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr class="summe"><td colspan="2">Summe</td>
+      <td class="zahl">{{ nachweis_minuten | dauer }}</td>
+      <td class="zahl">{{ nachweis_minuten | dezimalstunden }}</td></tr></tfoot>
+  </table>
+</div>
+{% endif %}
+
+{#
+  Fusszeile in drei Spalten, auf jeder Seite: wer, wie erreichbar, wohin
+  zahlen. Vorher eine Endloszeile, in der Bezeichnung und Wert auseinander-
+  rissen ("Steuernummer" am Zeilenende, die Nummer in der naechsten).
+
+  § 34a Satz 1 Nr. 2 UStDV: EINE von drei Kennungen muss auf der Rechnung
+  stehen -- und es steht genau eine, hier und nur hier
+  (rechnungsdruck.steuerkennung). Frueher stand jede eingetragene Kennung
+  da, die Steuernummer zweimal.
+#}
+<footer class="fuss">
+  <table>
+    <tr>
+      <td class="spalte-wer">
+        <div>{{ druck.name }}</div>
+        <div>{{ absender.strasse }}</div>
+        <div>{{ absender.plz }} {{ absender.ort }}</div>
+      </td>
+      <td class="spalte-kontakt">
+        {% if absender.telefon %}<div class="nowrap">Tel. {{ absender.telefon }}</div>{% endif %}
+        {% if absender.email %}<div class="umbruch">{{ absender.email }}</div>{% endif %}
+        {% if druck.kennung_wert %}<div class="nowrap">{{ druck.kennung_text }} {{ druck.kennung_wert }}</div>{% endif %}
+      </td>
+      <td class="spalte-bank">
+        {% if absender.iban %}
+        <div>Kontoinhaber: {{ druck.kontoinhaber }}</div>
+        <div class="nowrap">IBAN {{ absender.iban | iban }}</div>
+        {% if absender.bic %}<div class="nowrap">BIC {{ absender.bic }}</div>{% endif %}
+        {% if absender.institut %}<div>{{ absender.institut }}</div>{% endif %}
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+</footer>
+</body>
+</html>

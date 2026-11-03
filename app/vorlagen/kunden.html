@@ -1,0 +1,49 @@
+{% extends "basis.html" %}
+{% set aktiv = 'kunden' %}
+{% block titel %}Kunden · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Kunden</h1>
+<p class="hinweis">Der Rechnungsempfänger ist nur aus dieser Liste wählbar, nie als
+  Freitext — so landet kein falsch geschriebener Name auf einer Rechnung.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if hinweis %}<div class="meldung warn">{{ hinweis }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+
+<p class="knopfzeile"><a class="knopf" href="/kunden/neu">Neuer Kunde</a>
+  <a class="knopf still" href="/kunden/import">Kunden importieren</a></p>
+
+{% if kunden %}
+<table>
+  <thead><tr>
+    <th>Nr.</th><th>Name</th><th>Ort</th><th class="zahl">Satz</th>
+    <th class="zahl">Offene Stunden</th><th class="zahl">Offene Rechnungen</th>
+  </tr></thead>
+  <tbody>
+  {% for k in kunden %}
+    <tr{% if not k.aktiv %} class="inaktiv"{% endif %}>
+      <td>{{ k.kundennummer }}</td>
+      <td><a href="/kunden/{{ k.id }}">{{ k.name }}</a>
+        {% if not k.aktiv %}<span class="chip">stillgelegt</span>{% endif %}
+        {% if k.leistungsort != 'INLAND' %}<span class="chip">Ausland</span>{% endif %}</td>
+      <td>{{ k.ort }}</td>
+      <td class="zahl">{% if k.satz_cent is not none %}{{ k.satz_cent | euro }} €{% else %}—{% endif %}</td>
+      <td class="zahl">{% if k.offene_minuten %}{{ k.offene_minuten | dezimalstunden }}{% else %}—{% endif %}</td>
+      <td class="zahl">{% if k.offen_cent %}{{ k.offen_cent | euro }} €{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% elif stillgelegt %}
+<p class="leer">Keine aktiven Kunden. <a href="/kunden/neu">Neuen Kunden anlegen</a></p>
+{% else %}
+<p class="leer">Noch keine Kunden. <a href="/kunden/neu">Ersten Kunden anlegen</a> oder
+  <a href="/kunden/import">viele auf einmal aus einer Tabelle importieren</a>.</p>
+{% endif %}
+{% if stillgelegt and not alle %}
+<p class="hinweis">{{ stillgelegt }} stillgelegte{{ 'r' if stillgelegt == 1 }} Kunde{{ 'n' if stillgelegt != 1 }}
+  ausgeblendet — <a href="/kunden?alle=1">zeigen</a></p>
+{% elif stillgelegt %}
+<p class="hinweis"><a href="/kunden">Stillgelegte Kunden ausblenden</a></p>
+{% endif %}
+{% endblock %}

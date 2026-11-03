@@ -1,0 +1,152 @@
+{% extends "basis.html" %}
+{% set aktiv = 'reisen' %}
+{% block titel %}Reisen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Geschäftsreisen</h1>
+<p class="hinweis">Eine Reise ist der einzige Vorgang, der <strong>mehrere
+  Kennzahlen</strong> braucht: ein Konferenzbesuch zerfällt in Ticket (KZ 281), Hotel
+  (221), Verpflegungspauschale (171) und Fahrt (146 oder 147). Der Container hält die
+  Belege zusammen, ohne sie zu vermischen — ein Beleg mit vier Kategorien passte in der
+  EÜR nirgends hin.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+
+{# "nicht-drucken": Abschnitte, die nur ein Formular sind, ergeben auf Papier
+   eine leere Überschrift bzw. leere Kästen (die Formulare selbst blendet das
+   Druck-Stylesheet ohnehin aus). #}
+<h2 class="nicht-drucken">Reise anlegen</h2>
+{# Nach einer abgewiesenen Eingabe (422) stehen die Werte wieder im Formular. #}
+<form method="post" action="/reisen">
+  <div class="felder">
+    <label>Bezeichnung <input name="bezeichnung" required maxlength="120"
+      placeholder="PyCon DE 2026" value="{{ eingabe.bezeichnung or '' }}"></label>
+    <label>Ziel <input name="ziel" required maxlength="120"
+      placeholder="Darmstadt" value="{{ eingabe.ziel or '' }}"></label>
+    <label>Abreise <input type="date" name="abreise_am" required
+      value="{{ eingabe.abreise_am or '' }}"></label>
+    <label>Rückkehr <input type="date" name="rueckkehr_am" required
+      value="{{ eingabe.rueckkehr_am or '' }}"></label>
+  </div>
+  <label>Anlass <small>Pflicht: ohne erkennbaren betrieblichen Anlass ist eine Reise
+    nicht abziehbar</small>
+    <input name="anlass" required maxlength="200"
+           placeholder="Fachkonferenz, eigener Vortrag" value="{{ eingabe.anlass or '' }}"></label>
+  <div class="felder">
+    <label>Inland oder Ausland
+      <select name="inland">
+        <option value="1">Inland</option>
+        <option value="0" {% if eingabe.inland == '0' %}selected{% endif %}>Ausland</option>
+      </select></label>
+    <label>Abwesend in Stunden <small>bei einer eintägigen Reise und bei einer Reise
+      ohne Übernachtung nötig</small>
+      <input type="number" name="abwesend_stunden" min="0" max="24"
+             value="{{ eingabe.abwesend_stunden or '' }}"></label>
+  </div>
+  {# Versteckt "0" plus Kästchen "1": angekreuzt kommen beide an, sonst nur die
+     "0" -- so unterscheidet die Route "abgewählt" von "Feld fehlt". #}
+  <label class="zeile"><input type="hidden" name="uebernachtung" value="0">
+    <input type="checkbox" name="uebernachtung" value="1" id="uebernachtung"
+           {% if eingabe.uebernachtung != '0' %}checked{% endif %}>
+    Übernachtung außerhalb der Wohnung <small>— bei einer mehrtägigen Reise vorbelegt.
+    Ohne Übernachtung gibt es keine An- und Abreisepauschale, sondern 14 € nur bei mehr
+    als acht Stunden Abwesenheit (§ 9 Abs. 4a Satz 3 Nr. 2 und 3 EStG)</small></label>
+  <label>Notiz <textarea name="notiz" rows="2">{{ eingabe.notiz or '' }}</textarea></label>
+  <button type="submit">Reise anlegen</button>
+</form>
+<script>
+  (function () {
+    var von = document.querySelector('[name=abreise_am]');
+    var bis = document.querySelector('[name=rueckkehr_am]');
+    var kasten = document.getElementById('uebernachtung');
+    function nachziehen() {
+      if (von.value && bis.value) { kasten.checked = bis.value > von.value; }
+    }
+    von.addEventListener('change', nachziehen);
+    bis.addEventListener('change', nachziehen);
+  })();
+</script>
+
+{% if satz.veraltet %}
+<div class="meldung warn">{{ satz.hinweis }}</div>
+{% endif %}
+
+<h2>Reisen</h2>
+{% if reisen %}
+{% for r in reisen %}
+{% set rs = saetze[r.id] %}
+<h3 class="tag">{{ r.bezeichnung }} · {{ r.ziel }} ·
+  {{ r.abreise_am | datum_de }} – {{ r.rueckkehr_am | datum_de }}
+  {%- if not r.inland %} <span class="chip">Ausland</span>{% endif %}
+  {%- if not r.uebernachtung and r.rueckkehr_am != r.abreise_am %}
+  <span class="chip">ohne Übernachtung</span>{% endif %}</h3>
+<p class="hinweis">Anlass: {{ r.anlass }}{% if r.notiz %} · {{ r.notiz }}{% endif %}
+  {%- if r.abwesend_stunden is not none %} · {{ r.abwesend_stunden }} Stunden abwesend{% endif %}</p>
+{% if rs.veraltet %}<div class="meldung warn">{{ rs.hinweis }}</div>{% endif %}
+
+{% set zeilen = belege[r.id] %}
+{% if zeilen %}
+<table>
+  <thead><tr><th>Datum</th><th>Kennzahl</th><th>Kategorie</th>
+    <th class="zahl">Betrieblich</th><th></th></tr></thead>
+  <tbody>
+  {% for b in zeilen %}
+    <tr>
+      <td class="datum">{{ b.belegdatum | datum_de }}</td>
+      <td class="mono">{% if b.kennzahl %}KZ {{ b.kennzahl }}
+        {%- else %}<span class="chip ueberfaellig">offen</span>{% endif %}</td>
+      <td>{{ b.kategorie or '—' }}
+        {%- if b.notiz %}<br><span class="gedaempft">{{ b.notiz }}</span>{% endif %}</td>
+      <td class="zahl mono">{{ b.betrag_betrieblich_cent | euro }} €</td>
+      <td>{% if b.ist_eigenbeleg %}<span class="chip">Eigenbeleg</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="3">Summe über {{ r.kennzahlen }} Kennzahlen</th>
+    <th class="zahl mono">{{ r.summe_cent | euro }} €</th><th></th></tr></tfoot>
+</table>
+{% else %}
+<p class="leer">Noch keine Belege zu dieser Reise.</p>
+{% endif %}
+
+<div class="karten nicht-drucken">
+  <div class="karte">
+    <div class="label">Verpflegungspauschale</div>
+    {% if r.inland %}
+      <p class="hinweis">{{ rs['verpflegung_inland_vollertag_cent'] | euro }} € je
+        voller Tag, {{ rs['verpflegung_inland_teiltag_cent'] | euro }} € für An- und
+        Abreisetag (§ 9 Abs. 4a EStG). Wird als Eigenbeleg mit der Berechnung als
+        Begründung angelegt und zählt am Reisetag als Betriebsausgabe.</p>
+      <form method="post" action="/reisen/{{ r.id }}/verpflegung">
+        <button type="submit">Pauschale berechnen und buchen</button>
+      </form>
+    {% else %}
+      <p class="hinweis">Für Auslandsreisen nicht hinterlegt — das
+        Bundesfinanzministerium setzt die Sätze jedes Jahr je Land neu fest, und ein
+        veralteter Satz sieht aus wie ein geprüfter.
+        <a href="/belege/eigenbeleg">Von Hand erfassen</a></p>
+    {% endif %}
+  </div>
+  <div class="karte">
+    <div class="label">Fahrt mit privatem Pkw</div>
+    <form method="post" action="/reisen/{{ r.id }}/kilometer">
+      <div class="felder">
+        <label>Datum <input type="date" name="datum" required
+                            value="{{ r.abreise_am }}"></label>
+        <label>Kilometer <input type="number" name="km" min="1" required></label>
+      </div>
+      <label>Strecke <input name="strecke" required
+        placeholder="Hamburg – Darmstadt und zurück"></label>
+      <label>Zweck <input name="zweck" required placeholder="Hinfahrt zur Konferenz"></label>
+      <button type="submit">{{ rs['kilometergeld_pkw_cent'] }} ct/km buchen</button>
+    </form>
+  </div>
+</div>
+<p class="hinweis nicht-drucken">Ticket, Hotel und andere Fremdbelege gehören über
+  <a href="/belege">Belege</a> dazu — dort die Reise auswählen.
+  <a href="/belege/eigenbeleg">Eigenbeleg erfassen</a></p>
+{% endfor %}
+{% else %}
+<p class="leer">Noch keine Reise erfasst.</p>
+{% endif %}
+{% endblock %}

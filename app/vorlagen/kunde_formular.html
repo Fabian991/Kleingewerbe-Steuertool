@@ -1,0 +1,217 @@
+{% extends "basis.html" %}
+{% set aktiv = 'kunden' %}
+{% block titel %}{{ kunde.name if kunde else 'Neuer Kunde' }} · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>{{ kunde.name if kunde else 'Neuer Kunde' }}</h1>
+<p class="hinweis">Kundennummer <code>{{ kundennummer }}</code>{% if kunde %} ·
+  angelegt am {{ kunde.angelegt_am | datum_de }}{% endif %}</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if hinweis %}<div class="meldung warn">{{ hinweis }}</div>{% endif %}
+{% for grund in unfertig %}<div class="meldung warn">{{ grund }}</div>{% endfor %}
+{% if erfolg %}<div class="meldung erfolg" role="status">{{ erfolg }}</div>{% endif %}
+{% if kunde and not kunde.aktiv %}<div class="meldung">Dieser Kunde ist <strong>stillgelegt</strong>:
+  er steht in keiner Auswahl für neue Zeiten und Rechnungen und ist in der Kundenliste
+  ausgeblendet. <a href="#stilllegen">Wieder aktivieren</a></div>{% endif %}
+
+{# Die Felder lesen aus `formular`, nie aus `kunde`: im Fehlerzweig steht
+   dort, was der Nutzer soeben eingegeben hat -- nicht der alte Stand. #}
+<form method="post" action="{{ '/kunden/' + kunde.id|string if kunde else '/kunden' }}">
+  <fieldset>
+    <legend>Anschrift — Pflicht nach § 34a Satz 1 Nr. 1 UStDV</legend>
+    <div class="felder">
+      <label>Name <input name="name" required value="{{ formular.name }}"></label>
+      <label>Rechnungsname <small>falls abweichend</small>
+        <input name="rechnungsname" value="{{ formular.rechnungsname }}"></label>
+      <label>Ansprechpartner
+        <input name="ansprechpartner" value="{{ formular.ansprechpartner }}"></label>
+      <label>Straße und Hausnummer
+        <input name="strasse" required value="{{ formular.strasse }}"></label>
+      <label>PLZ <input name="plz" required value="{{ formular.plz }}"></label>
+      <label>Ort <input name="ort" required value="{{ formular.ort }}"></label>
+      <label>Land <small>Kürzel oder Name, z. B. DE oder Deutschland</small>
+        <input name="land" list="laender" value="{{ formular.land }}">
+        <datalist id="laender">
+          {% for code, name in laender.items() %}
+          <option value="{{ code }}">{{ name }}</option>
+          {% endfor %}
+        </datalist></label>
+      <label>E-Mail <input name="email" type="email" value="{{ formular.email }}"></label>
+      {% if not kunde %}
+      <label>Kundennummer <small>leer = {{ kundennummer }}. Beim Übernehmen eines
+        Altbestands die gewachsene Nummer eintragen — sie steht auf den bisherigen
+        Rechnungen.</small>
+        <input name="kundennummer" placeholder="{{ kundennummer }}"
+               value="{{ formular.kundennummer }}"></label>
+      {% endif %}
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Steuerliche Einordnung</legend>
+    <div class="felder">
+      <label>Kundentyp
+        <select name="typ">
+          {% for wert, text in [('UNTERNEHMER','Unternehmer'),
+                                ('JURISTISCHE_PERSON','Juristische Person'),
+                                ('PRIVAT','Privatperson')] %}
+          <option value="{{ wert }}" {% if formular.typ == wert %}selected{% endif %}>{{ text }}</option>
+          {% endfor %}
+        </select></label>
+      <label>Leistungsort <small>nur Inland zählt in die § 19-Umsatzgrenze</small>
+        <select name="leistungsort">
+          {% for wert, text in [('INLAND','Inland'),
+                                ('EU_B2B_REVERSE_CHARGE','EU B2B, Reverse Charge'),
+                                ('DRITTLAND','Drittland')] %}
+          <option value="{{ wert }}" {% if formular.leistungsort == wert %}selected{% endif %}>{{ text }}</option>
+          {% endfor %}
+        </select></label>
+      <label>USt-IdNr. <small>bei Reverse Charge Pflicht und im Format des Landes
+          (z. B. ATU12345678); sonst jede Steuernummer, z. B. CHE-123.456.789 MWST</small>
+        <input name="ust_idnr" maxlength="60" value="{{ formular.ust_idnr }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Abrechnung</legend>
+    <div class="felder">
+      <label>Stundensatz in Euro
+        <small>leer = Standard {{ standardsatz_cent | euro }} €, sonst größer als 0</small>
+        <input name="satz_euro" inputmode="decimal" value="{{ formular.satz_euro }}"></label>
+      <label>Zahlungsziel in Tagen <small>leer = Standard {{ zahlungsziel_tage }}, höchstens 365</small>
+        <input name="zahlungsziel" type="number" min="0" max="365"
+               value="{{ formular.zahlungsziel }}"></label>
+      <label>Rechnungspositionen gruppieren
+        <small>„pro Eintrag“ rechnet jede Zeit minutengenau ab — die Rundung entfällt</small>
+        <select name="gruppierung">
+          {% for wert, text in [('PRO_TITEL','pro Titel'), ('PRO_TAG','pro Tag'),
+                                ('SAMMEL','eine Sammelposition'), ('PRO_EINTRAG','pro Eintrag')] %}
+          <option value="{{ wert }}" {% if formular.gruppierung == wert %}selected{% endif %}>{{ text }}</option>
+          {% endfor %}
+        </select></label>
+      {# Die Rundungsregel dieses Kunden. Gerundet wird immer die Zeitsumme je
+         Rechnungsposition, nie der einzelne Eintrag; leer heisst "wie im
+         Betrieb eingestellt". #}
+      <label>Zeitrundung
+        <small>gerundet wird die Zeitsumme je Rechnungsposition, nie der einzelne Eintrag</small>
+        <select name="rundung_modus">
+          {% for wert, text in [('', 'wie Betrieb (' ~ betriebsregel.kurz ~ ')'),
+                                ('KEINE', 'nicht runden (minutengenau)'),
+                                ('AUFWAERTS', 'aufwärts auf den vollen Takt'),
+                                ('KAUFMAENNISCH', 'kaufmännisch'),
+                                ('ABWAERTS', 'abwärts')] %}
+          <option value="{{ wert }}" {% if (formular.rundung_modus or '') == wert %}selected{% endif %}>{{ text }}</option>
+          {% endfor %}
+        </select></label>
+      <label>Takt in Minuten
+        <small>nur mit eigener Regel; leer = Takt des Betriebs ({{ betriebsregel.intervall_min }})</small>
+        <input name="rundung_takt" type="number" min="1" max="60" inputmode="numeric"
+               value="{{ formular.rundung_takt or '' }}"></label>
+      <label>Rundung vereinbart in
+        <small>wo die Regel mit dem Kunden steht, z. B. „Angebot vom 03.02.2026“ oder „AGB
+          Stand 01/2026“ — ohne Vereinbarung ist eine Aufrundung angreifbar</small>
+        <input name="rundung_grundlage" maxlength="200" value="{{ formular.rundung_grundlage or '' }}"></label>
+      <label>Aktiv
+        <select name="aktiv">
+          <option value="1" {% if formular.aktiv != '0' %}selected{% endif %}>ja</option>
+          <option value="0" {% if formular.aktiv == '0' %}selected{% endif %}>nein, stillgelegt</option>
+        </select></label>
+    </div>
+    <label style="margin-top:12px">Notiz
+      <textarea name="notiz" rows="2">{{ formular.notiz }}</textarea></label>
+  </fieldset>
+
+  <button type="submit">Speichern</button>
+</form>
+
+{% if offene %}
+<h2>Nicht abgerechnete Zeiten</h2>
+<p class="hinweis">Die ältesten zuerst — sie warten am längsten auf eine Rechnung.</p>
+<table>
+  <thead><tr><th>Datum</th><th>Titel</th><th class="zahl">Dauer</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for z in offene %}
+    <tr><td>{{ z.datum | datum_de }}</td><td>{{ z.titel }}</td>
+      <td class="zahl">{{ z.dauer_minuten | dauer }}</td>
+      <td><span class="chip {{ z.status | lower }}">{{ z.status | status_text }}</span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if offene_gesamt > offene|length %}
+<p class="hinweis">… und {{ offene_gesamt - offene|length }} weitere.
+  <a href="/zeiten?kunde={{ kunde.id }}">Alle {{ offene_gesamt }} offenen Zeiten dieses Kunden</a></p>
+{% endif %}
+{% endif %}
+
+{#- Stilllegen und Loeschen: ein eigener Block unter allem anderen. Loeschen in
+    zwei Schritten ohne Skript -- erst aufklappen, dann bestaetigen; die
+    Rueckfrage zaehlt auf, was mitgeloescht wird. #}
+{% if kunde and loeschbarkeit %}
+{% set l = loeschbarkeit %}
+<section class="kunde-ende" id="stilllegen">
+  <h2>Stilllegen oder löschen</h2>
+  {% if kunde.aktiv %}
+  <form method="post" action="/kunden/{{ kunde.id }}/stilllegen" class="zeile">
+    <button type="submit" class="leise">Kunde stilllegen</button>
+  </form>
+  <p class="hinweis">Stillgelegt verschwindet der Kunde aus der Kundenliste und aus der Auswahl
+    für neue Zeiten und Rechnungen. Rechnungen, Zahlungen und Zeiten bleiben, wie sie sind;
+    jederzeit umkehrbar.</p>
+  {% else %}
+  <form method="post" action="/kunden/{{ kunde.id }}/aktivieren" class="zeile">
+    <button type="submit" class="leise">Wieder aktivieren</button>
+  </form>
+  {% endif %}
+
+  <details class="loeschen" id="loeschen">
+    <summary>Kunde löschen</summary>
+    {% if not l.loeschbar %}
+    <p class="hinweis">Kann nicht gelöscht werden: der Kunde steht auf
+      {{ l.belege | join(', ') if l.belege else 'einer festgeschriebenen Rechnung (über seine Zeiten)' }}.
+      Rechnungen und Stornos werden zehn Jahre aufbewahrt (§ 147 AO), und mit ihnen der Kunde,
+      auf den sie verweisen.{% if kunde.aktiv %} Stattdessen stilllegen — er verschwindet aus
+      Liste und Auswahl, seine Rechnungen bleiben.{% endif %}</p>
+    {% else %}
+    <form method="post" action="/kunden/{{ kunde.id }}/loeschen">
+      <input type="hidden" name="bestaetigt" value="1">
+      <input type="hidden" name="stand" value="{{ l.stand }}">
+      <p class="hinweis">Der Kunde steht auf keinem festgeschriebenen Dokument und lässt sich
+        endgültig löschen.
+        {% if l.zurueckgenommen %}Seine Kundennummer {{ kunde.kundennummer }} stand auf der
+        zurückgenommenen Rechnung{{ 'en' if l.zurueckgenommen | length > 1 }}
+        {{ l.zurueckgenommen | join(', ') }} (aufbewahrt, mit Eintrag
+        im Protokoll) und wird deshalb nicht wieder vergeben.
+        {%- else %}Seine Kundennummer {{ kunde.kundennummer }} wird danach wieder frei, wenn sie
+        die höchste war.{% endif %} Der vollständige Inhalt steht im Protokoll.</p>
+      {% if l.entwuerfe or l.zeiten %}
+      <p>Mitgelöscht werden:</p>
+      <ul class="hinweis">
+        {% for e in l.entwuerfe %}
+        <li>Rechnungsentwurf {{ e.id }}{% if e.betreff %} „{{ e.betreff }}“{% endif %} —
+          {{ e.positionen }} Position{{ 'en' if e.positionen != 1 }}, {{ e.netto_cent | euro }} €</li>
+        {% endfor %}
+        {% for z in l.zeiten[:loeschen_aufzaehlen] %}
+        <li>Zeit {{ z.datum | datum_de }} „{{ z.titel }}“, {{ z.dauer_minuten | dauer }}
+          <span class="chip {{ z.status | lower }}">{{ z.status | status_text }}</span></li>
+        {% endfor %}
+        {% if l.zeiten | length > loeschen_aufzaehlen %}
+        <li>… und {{ l.zeiten | length - loeschen_aufzaehlen }} weitere Zeiten
+          (<a href="/zeiten?kunde={{ kunde.id }}">alle ansehen</a>)</li>
+        {% endif %}
+      </ul>
+      {% endif %}
+      {% if l.timer_laeuft %}
+      <div class="meldung warn">Für diesen Kunden läuft ein Timer. Bitte erst stoppen, dann
+        löschen.</div>
+      {% endif %}
+      <label>Grund <small>freiwillig, steht im Protokoll</small>
+        <input name="grund" maxlength="200" autocomplete="off"></label>
+      <button type="submit" class="still"{% if l.timer_laeuft %} disabled{% endif %}>Ja,
+        {{ kunde.kundennummer }} {{ kunde.name }}
+        {%- if l.entwuerfe or l.zeiten %} mit allem Aufgezählten{% endif %} endgültig löschen</button>
+    </form>
+    {% endif %}
+  </details>
+</section>
+{% endif %}
+{% endblock %}

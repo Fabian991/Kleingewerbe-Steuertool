@@ -1,0 +1,46 @@
+<!doctype html>
+{# Die sichere Textansicht einer E-Mail. Mit Absicht eine eigene, kleine Seite
+   ohne Skripte, ohne Bilder, ohne Verweise nach draußen: das HTML einer Mail
+   wird NIE gerendert (Zählpixel, nachgeladene Bilder, Skripte). Alles hier ist
+   Text, von Jinja maskiert; die Antwort trägt eine Content-Security-Policy,
+   die nichts nachladen lässt. #}
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>{{ mail.betreff or 'E-Mail' }}</title>
+<style>
+  body { font: 14px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif; margin: 16px;
+         color: #1d1d1f; background: #fff; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 12px; }
+  dt { color: #6e6e73; } dd { margin: 0; word-break: break-word; }
+  pre { white-space: pre-wrap; word-break: break-word; font: inherit; border-top: 1px solid #d2d2d7;
+        padding-top: 12px; margin: 0; }
+  .hinweis { color: #6e6e73; font-size: 12px; margin: 0 0 10px; }
+  ul { padding-left: 18px; margin: 4px 0 12px; }
+  h2 { font-size: 13px; margin: 14px 0 4px; color: #6e6e73; font-weight: 600; }
+</style>
+</head>
+<body>
+<dl>
+  <dt>Von</dt><dd>{{ mail.von or '—' }}</dd>
+  <dt>An</dt><dd>{{ mail.an or '—' }}</dd>
+  <dt>Betreff</dt><dd><strong>{{ mail.betreff or '—' }}</strong></dd>
+  <dt>Datum</dt><dd>{{ mail.datum or '—' }}</dd>
+</dl>
+<p class="hinweis">Sichere Textansicht: das HTML der Mail wird nicht angezeigt — keine Bilder,
+  keine Skripte, kein Abruf aus dem Netz{% if mail.aus_html %}; der Text unten ist aus dem
+  HTML gewonnen{% endif %}.{% if download %} <a href="{{ download }}">Original (.eml)
+  herunterladen</a>{% endif %}</p>
+{% if mail.anhaenge %}
+<h2>Anhänge</h2>
+<ul>
+  {% for a in mail.anhaenge %}
+  <li>{{ a.name }} · {{ a.groesse | dateigroesse }} · {{ a.art }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+<pre>{{ mail.text }}</pre>
+{% if mail.gekuerzt %}<p class="hinweis">… gekürzt — die E-Mail ist sehr lang. Vollständig im
+  Original.</p>{% endif %}
+</body>
+</html>

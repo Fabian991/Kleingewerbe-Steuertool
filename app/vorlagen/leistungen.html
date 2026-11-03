@@ -1,0 +1,106 @@
+{% extends "basis.html" %}
+{% set aktiv = 'leistungen' %}
+{% block titel %}Leistungen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Leistungen</h1>
+<p class="hinweis">Der Katalog hält die Titel konsistent. Das ist kein Schönheitsthema:
+  bei der Gruppierung „pro Titel“ werden aus <em>Beratung</em>, <em>beratung</em> und
+  <em>Consulting</em> drei Rechnungspositionen für dieselbe Arbeit. Neue Titel aus der
+  Zeiterfassung landen automatisch hier.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+
+{% if unbekannt %}
+<div class="meldung warn">
+  <strong>{% if unbekannt | length == 1 %}1 benutzter Titel steht nicht im Katalog.{% else %}{{ unbekannt | length }} benutzte Titel stehen nicht im Katalog.{% endif %}</strong>
+  Sie wurden erfasst, bevor der Katalog mitgeschrieben hat — oder in einer anderen
+  Schreibweise.
+  <ul>
+    {% for u in unbekannt[:12] %}
+      <li>{{ u.titel }} <span class="gedaempft">· {{ u.verwendet }}×, zuletzt
+        {{ u.letzter | datum_de }}</span></li>
+    {% endfor %}
+    {% if unbekannt | length > 12 %}<li class="gedaempft">… und
+      {{ unbekannt | length - 12 }} weitere</li>{% endif %}
+  </ul>
+  <form method="post" action="/leistungen/nachtragen">
+    <button type="submit">Alle übernehmen</button>
+  </form>
+</div>
+{% endif %}
+
+{# "nicht-drucken": auf Papier bliebe nur die Überschrift über einem leeren Platz. #}
+<h2 class="nicht-drucken">Neue Leistung</h2>
+<form method="post" action="/leistungen">
+  <div class="felder">
+    <label>Titel <input name="titel" required maxlength="120"
+      placeholder="Beratung"></label>
+    <label>Einheit <small>nur zur Einordnung — auf Rechnungen steht derzeit immer die
+        Stunde</small>
+      <select name="einheit">
+        {% for e in einheiten %}
+          <option value="{{ e }}">{{ e | einheit_de }} ({{ e }})</option>
+        {% endfor %}
+      </select></label>
+    <label>Preis <small>wird derzeit nicht auf Rechnungen übernommen; abgerechnet wird
+        der Stundensatz des Kunden</small>
+      <input name="preis_euro" inputmode="decimal" placeholder="85,00"></label>
+  </div>
+  <label>Beschreibungsvorlage <small>wird beim Erfassen vorgeschlagen, sobald der Titel
+      gewählt ist und die Beschreibung noch leer ist</small>
+    <textarea name="beschreibung_vorlage" rows="2"></textarea></label>
+  <button type="submit">Aufnehmen</button>
+</form>
+
+<h2>Katalog</h2>
+{% if leistungen %}
+<table>
+  <thead><tr><th>Titel</th><th>Einheit</th><th class="zahl">Preis</th>
+    <th class="zahl">Benutzt</th><th></th></tr></thead>
+  <tbody>
+  {% for l in leistungen %}
+    <tr {% if not l.aktiv %}class="inaktiv"{% endif %}>
+      <td>{{ l.titel }}
+        {%- if not l.aktiv %} <span class="chip">stillgelegt</span>{% endif %}
+        {%- if l.beschreibung_vorlage %}<br><span class="gedaempft">{{ l.beschreibung_vorlage }}</span>{% endif %}</td>
+      <td>{{ l.einheit | einheit_de }}</td>
+      <td class="zahl">{% if l.preis_cent is not none %}{{ l.preis_cent | euro }} €{% else %}—{% endif %}</td>
+      <td class="zahl">{{ l.verwendet }}</td>
+      <td class="aktionen">
+        <details>
+          <summary>Bearbeiten</summary>
+          <form method="post" action="/leistungen/{{ l.id }}">
+            <label>Titel <input name="titel" value="{{ l.titel }}" required maxlength="120"></label>
+            <label>Einheit
+              <select name="einheit">
+                {% for e in einheiten %}
+                  <option value="{{ e }}" {% if e == l.einheit %}selected{% endif %}>{{ e | einheit_de }}</option>
+                {% endfor %}
+              </select></label>
+            <label>Preis
+              <input name="preis_euro" inputmode="decimal"
+                     value="{% if l.preis_cent is not none %}{{ l.preis_cent | euro }}{% endif %}"></label>
+            <label>Beschreibungsvorlage
+              <textarea name="beschreibung_vorlage" rows="2">{{ l.beschreibung_vorlage or '' }}</textarea></label>
+            <label class="zeile"><input type="checkbox" name="aktiv" value="1"
+              {% if l.aktiv %}checked{% endif %}> aktiv</label>
+            <button type="submit">Speichern</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hinweis">Nicht mehr benutzte Titel werden stillgelegt, nicht gelöscht: die
+  Zeiteinträge tragen den Titel als eigene Aufzeichnung, und ein Umbenennen oder
+  Entfernen im Katalog ändert daran nichts. Nach einem Umbenennen erscheint der alte
+  Titel deshalb oben als „nicht im Katalog“, solange Zeiteinträge ihn tragen.
+  Preis und Einheit dienen der Übersicht; auf Rechnungen wird derzeit der Stundensatz
+  des Kunden je Stunde abgerechnet.</p>
+{% else %}
+<p class="leer">Noch keine Leistung im Katalog. Der erste Zeiteintrag füllt ihn
+  von selbst. <a href="/zeiten">Zeit erfassen</a></p>
+{% endif %}
+{% endblock %}

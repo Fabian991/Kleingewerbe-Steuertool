@@ -1,0 +1,42 @@
+{% extends "basis.html" %}
+{% set aktiv = 'rechnungen' %}
+{% block titel %}Nummernlücken · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Nummernlücken</h1>
+<p class="hinweis">Verbrauchte Rechnungsnummern ohne gültige Rechnung, je Jahr. Eine lückenlose
+  Folge ist nicht vorgeschrieben (FG Köln, 15 K 1122/16), in einer Betriebsprüfung aber
+  erklärungsbedürftig — deshalb steht hier zu jeder Lücke der Grund, soweit das Protokoll ihn
+  kennt. Eine Lücke entsteht, wenn eine nie verschickte Rechnung zurückgenommen wird, nach deren
+  Nummer schon eine weitere vergeben war. War sie die zuletzt vergebene, wird ihre Nummer wieder
+  frei und es entsteht keine Lücke.</p>
+
+<p><a href="/rechnungen">Zurück zu den Rechnungen</a></p>
+
+{% if jahre %}
+{% for jahr, luecken in jahre.items() %}
+<h2>{{ jahr }}</h2>
+<table>
+  <thead><tr><th>Nummer</th><th>Grund</th><th>Zurückgenommen am</th><th>Danach</th></tr></thead>
+  <tbody>
+  {% for l in luecken %}
+    <tr>
+      <td class="mono">{{ l.nummer }}</td>
+      <td>{% if l.grund %}{{ l.grund }}{% else %}<span class="gedaempft">ohne Vermerk im
+        Protokoll — bitte selbst dokumentieren</span>{% endif %}</td>
+      <td class="mono">{% if l.vermerkt_am %}{{ l.vermerkt_am | zeit_lokal }}{% else %}—{% endif %}</td>
+      <td>{% if l.variante == 'ENTWURF' %}wieder Entwurf
+        {%- if l.rechnung_id %} (<a href="/rechnung/{{ l.rechnung_id }}">ansehen</a>){% endif %}
+        {%- elif l.variante == 'GELOESCHT' %}gelöscht{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+<p class="hinweis">Der vollständige Inhalt jeder zurückgenommenen Rechnung steht im
+  <a href="/journal?aktion=RECHNUNG_ZURUECKGENOMMEN">Protokoll</a>, ihr PDF als „VERWORFEN“ unter
+  <code>ausgangsrechnungen/verworfen/</code>. Die Liste steht auch in der Datenausgabe (Excel,
+  Blatt „Nummernlücken“).</p>
+{% else %}
+<p class="leer">Keine Nummernlücken.</p>
+{% endif %}
+{% endblock %}

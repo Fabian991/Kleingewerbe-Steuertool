@@ -1,0 +1,102 @@
+{% extends "basis.html" %}
+{% set aktiv = 'belege' %}
+{% block titel %}Eigenbeleg · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Eigenbeleg</h1>
+<p class="hinweis">Ein Beleg ohne Fremddokument. Bewusst nicht als Notlösung versteckt:
+  zwei Ausgabenarten kommen überhaupt <em>nie</em> mit einem Fremdbeleg — die
+  Verpflegungspauschale, weil abziehbar die Pauschbeträge nach § 9 Abs. 4a EStG sind und
+  nicht die Essensbelege, und das Kilometergeld, weil der Nachweis eine Aufstellung ist.
+  Dazu der Alltagsfall: ein Kassenzettel auf Thermopapier, der verblasst ist.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+
+{% if satz.veraltet %}
+<div class="meldung warn">{{ satz.hinweis }}</div>
+{% endif %}
+
+<div class="meldung warn">
+  <strong>Die Begründung ist Pflicht, nicht Zierde.</strong>
+  Ein Eigenbeleg ist die Ausnahme von „jeder Ausgabe liegt ein Fremdbeleg zugrunde", und
+  eine Ausnahme muss man begründen können — später erinnert sich niemand. Mindestens
+  {{ mindestlaenge }} Zeichen; die Datenbank weist einen Beleg ohne Begründung ab.
+</div>
+
+{# Nach einer abgewiesenen Eingabe (422) stehen die Werte des Nutzers wieder
+   in den Feldern -- die Begründung tippt niemand gern zweimal. #}
+<form method="post" action="/belege/eigenbeleg">
+  <div class="felder">
+    <label>Belegdatum <input type="date" name="belegdatum" required
+                            value="{{ eingabe.belegdatum if 'belegdatum' in eingabe else heute }}"></label>
+    <label>Betrag <small>brutto, wie er geflossen ist</small>
+      <input name="brutto_euro" inputmode="decimal" required placeholder="24,90"
+             value="{{ eingabe.brutto_euro or '' }}"></label>
+    <label>Betrieblicher Anteil in Prozent
+      <input type="number" name="quote" min="0" max="100"
+             value="{{ eingabe.quote if 'quote' in eingabe else 100 }}"></label>
+    <label>Bezahlt am <small>leer = noch offen; erst mit Zahlungsdatum zählt der Beleg in
+      der EÜR (§ 11 Abs. 2 EStG)</small>
+      <input type="date" name="bezahlt_am" value="{{ eingabe.bezahlt_am if 'bezahlt_am' in eingabe else heute }}"></label>
+  </div>
+  <label>Kurzbezeichnung <small>steht später in der Belegliste</small>
+    <input name="bezeichnung" maxlength="120" placeholder="Parkgebühr Kundentermin"
+           value="{{ eingabe.bezeichnung or '' }}"></label>
+  <label>Kategorie <small>entscheidet die Zeile in der Anlage EÜR</small>
+    <select name="kategorie_id">
+      <option value="">— noch offen —</option>
+      {% for k in kategorien %}
+        <option value="{{ k.id }}" {% if eingabe.kategorie_id == k.id | string %}selected{% endif %}>{{ k.bezeichnung }} (KZ {{ k.kennzahl }})</option>
+      {% endfor %}
+    </select></label>
+  {% if reisen %}
+  <label>Gehört zu einer Reise <small>optional</small>
+    <select name="reise_id">
+      <option value="">— keine —</option>
+      {% for r in reisen %}
+        <option value="{{ r.id }}" {% if eingabe.reise_id == r.id | string %}selected{% endif %}>{{ r.bezeichnung }} · {{ r.ziel }} ·
+          {{ r.abreise_am | datum_de }}</option>
+      {% endfor %}
+    </select></label>
+  {% endif %}
+  <label>Begründung <small>warum es keinen Fremdbeleg gibt und wofür die Ausgabe war</small>
+    <textarea name="grund" rows="3" required minlength="{{ mindestlaenge }}"
+      placeholder="Parkautomat ohne Belegausgabe, Kundentermin bei Mustermann GmbH am 14.03.">{{ eingabe.grund or '' }}</textarea></label>
+  <button type="submit">Eigenbeleg erfassen</button>
+</form>
+<script>
+  // "Bezahlt am" folgt dem Belegdatum, solange der Nutzer es nicht selbst
+  // geaendert hat: beim Eigenbeleg ist der Zahltag fast immer der Belegtag.
+  (function () {
+    var beleg = document.querySelector('[name=belegdatum]');
+    var bezahlt = document.querySelector('[name=bezahlt_am]');
+    var gekoppelt = beleg.value === bezahlt.value;
+    bezahlt.addEventListener('input', function () { gekoppelt = false; });
+    beleg.addEventListener('change', function () {
+      if (gekoppelt) { bezahlt.value = beleg.value; }
+    });
+  })();
+</script>
+
+<h2>Was es dafür schon fertig gibt</h2>
+<p class="hinweis">Zwei Fälle rechnet das Werkzeug selbst, damit niemand die Pauschbeträge
+  nachschlagen muss:</p>
+<ul class="hinweis">
+  <li><strong>Verpflegungspauschale</strong> — über <a href="/reisen">Reisen</a>. Inland
+    {{ satz['verpflegung_inland_vollertag_cent'] | euro }} € für einen Tag mit 24 Stunden
+    Abwesenheit, {{ satz['verpflegung_inland_teiltag_cent'] | euro }} € für An- und
+    Abreisetage sowie für eine eintägige Reise über
+    {{ satz['verpflegung_mindeststunden_teiltag'] }} Stunden
+    (§ 9 Abs. 4a EStG, Stand {{ jahr }}).</li>
+  <li><strong>Fahrten mit privatem Pkw</strong> — ebenfalls über
+    <a href="/reisen">Reisen</a>. {{ satz['kilometergeld_pkw_cent'] }} Cent je Kilometer
+    als Nutzungseinlage.</li>
+</ul>
+<p class="hinweis">Für <strong>Auslandsreisen</strong> sind die Verpflegungspauschalen
+  bewusst nicht hinterlegt: das Bundesfinanzministerium setzt sie jedes Jahr je Land neu
+  fest, und ein veralteter Satz sieht aus wie ein geprüfter. Dort hilft nur dieses
+  Formular und ein Blick in das aktuelle BMF-Schreiben.</p>
+<p class="hinweis">Eine <strong>Übernachtungspauschale</strong> gibt es hier nicht: die
+  20 € gelten für den steuerfreien Arbeitgeberersatz an Arbeitnehmer. Ein Selbstständiger
+  zieht Übernachtungskosten nur mit dem tatsächlichen Beleg ab.</p>
+{% endblock %}

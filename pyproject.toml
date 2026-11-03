@@ -1,0 +1,74 @@
+# Ohne diesen Block raet pip, womit das Projekt gebaut wird, und benutzt eine
+# Rueckfallregel, die sich zwischen pip-Versionen aendert. Auf einem fremden
+# Rechner ist das der Unterschied zwischen "laeuft" und "laeuft bei mir".
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steuer-tool"
+version = "0.1.0"
+description = "Rechnungen, Zeiterfassung und EUeR-Ausfuellhilfe fuer ein Kleingewerbe (Kleinunternehmer nach § 19 UStG)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "jinja2>=3.1.4",
+    "python-multipart>=0.0.12",
+    # Der Datenausgang als Tabelle. KEINE optionale Gruppe: app/logik/backup.py
+    # importiert export_excel beim Laden des Moduls, und ueber app/filter.py
+    # haengt die ganze Oberflaeche daran -- ohne openpyxl startet die Anwendung
+    # nicht. Die Tabelle liegt ausserdem in jeder Sicherung, und eine Sicherung
+    # ist kein Zusatz.
+    "openpyxl>=3.1.0",
+    # Der Kundenimport liest fremde xlsx-Dateien. openpyxl entschaerft
+    # XML-Entitaeten (Billion Laughs, externe Entitaeten) nur, wenn defusedxml
+    # installiert ist -- ohne hinge der Schutz am XML-Parser der jeweiligen
+    # Python-Version.
+    "defusedxml>=0.7.1",
+]
+
+[project.optional-dependencies]
+pdf = ["weasyprint>=63.0"]
+# Eingangsbelege. pypdf holt das eingebettete XML einer E-Rechnung aus den
+# Anhaengen (Stufe 1), pdfplumber liest die Textschicht (Stufe 2). Beide
+# plattformunabhaengig und ohne native Abhaengigkeiten.
+belege = ["pypdf>=5.1.0", "pdfplumber>=0.11.0"]
+# Stufe 3: Texterkennung mit Apple Vision. NUR auf macOS -- ocrmac bindet die
+# Systembibliothek ein, pypdfium2 rastert PDF-Seiten dafuer. Bewusst eine
+# eigene Gruppe: auf jedem anderen System laesst sich ocrmac nicht einmal
+# installieren, und die uebrigen Stufen sollen davon nicht abhaengen.
+ocr = ["ocrmac>=1.0.0; sys_platform == 'darwin'", "pypdfium2>=4.30.0", "pillow>=11.0.0"]
+dev = ["pytest>=8.3.0", "ruff>=0.8.0"]
+
+# Ohne diesen Block bricht `pip install -e .` ab, sobald neben app/ ein zweites
+# Verzeichnis mit Python-Dateien im Projektwurzelverzeichnis liegt: setuptools
+# erkennt das Flat-Layout, findet zwei Pakete und verweigert die Arbeit
+# ("Multiple top-level packages discovered in a flat-layout").
+#
+# Installiert wird NUR app/. Einmalskripte in einem eigenen Ordner gehoeren
+# nicht ins installierte Paket, und tests/ erst recht nicht.
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+# app/ ist mit drin, damit die Doctests mitlaufen. Ein Beispiel im Docstring,
+# das nicht geprueft wird, ist nach der ersten Aenderung eine Behauptung --
+# und gerade bei der Rundung und den Wertgrenzen ist das Beispiel die
+# verstaendlichste Form der Spezifikation.
+testpaths = ["tests", "app"]
+addopts = "--doctest-modules"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008 verbietet Funktionsaufrufe in Vorbelegungen. Das ist gegen den
+# haeufigen Fehler gerichtet, dass eine Liste oder ein Datum EINMAL beim Import
+# entsteht und sich dann zwischen Aufrufen teilt. Bei FastAPI ist der Aufruf in
+# der Vorbelegung dagegen die vorgesehene Schreibweise: Depends(), Form() und
+# File() sind Marker, die das Framework ausliest und nie als Wert benutzt. Die
+# Regel hier auszuschalten ist also keine Nachlaessigkeit -- sie passt nicht.
+ignore = ["B008"]

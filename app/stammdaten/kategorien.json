@@ -1,0 +1,313 @@
+{
+  "_hinweis": [
+    "Startkatalog der Ausgaben- und Einnahmenkategorien, abgebildet auf die",
+    "Kennzahlen der Anlage EUeR.",
+    "",
+    "Abgebildet wird auf (bereich, kennzahl) und NICHT auf die Kennzahl allein:",
+    "Kennzahlen sind nur innerhalb eines Formularbereichs eindeutig. Im Vordruck",
+    "2025 steht KZ 111 sowohl in Zeile 10 ('Betrieb beendet?') als auch in",
+    "Zeile 12 (Betriebseinnahmen Kleinunternehmer).",
+    "",
+    "Zeilennummern und amtliche Bezeichnungstexte stehen bewusst NICHT hier:",
+    "sie verschieben sich jedes Jahr. Sie liegen in euer_<jahr>.json. Hier steht",
+    "nur, was stabil ist -- Bereich und Kennzahl.",
+    "",
+    "'schluessel' ist der dauerhafte Bezug fuer Code und Wiedereinlesen. Er darf",
+    "sich NIE aendern; 'bezeichnung' darf jederzeit umformuliert werden.",
+    "",
+    "Betraege werden immer BRUTTO gebucht: ohne Vorsteuerabzug sind Ausgaben",
+    "'mit dem Bruttobetrag in den jeweiligen Betriebsausgabenpositionen'",
+    "einzutragen (amtliche Anleitung). KZ 185 und 186 bleiben deshalb leer.",
+    "",
+    "'grenze_netto_cent' ist eine Wertgrenze, die nach R 9b Abs. 2 EStR STETS",
+    "netto geprueft wird -- 'Ob der Vorsteuerbetrag umsatzsteuerrechtlich",
+    "abziehbar ist, spielt in diesem Fall keine Rolle.' 800 EUR netto sind also",
+    "rund 952 EUR brutto. Gebucht wird trotzdem brutto (R 9b Abs. 1). Bei",
+    "Geschenken gilt umgekehrt der Bruttobetrag schon fuer die Freigrenze",
+    "(R 9b Abs. 2 Satz 3) -- diese Asymmetrie steht im Hinweistext."
+  ],
+  "version": "2025-01",
+  "kategorien": [
+    {
+      "schluessel": "EINNAHME_HONORAR_INLAND",
+      "bezeichnung": "Honorar & Dienstleistung (Inland)",
+      "bereich": 20,
+      "kennzahl": 111,
+      "sortierung": 10,
+      "hinweis": "Webentwicklung, Wartungspauschale, Beratungsstunden, Workshop-Tagessatz. Zeile 12 lautet 'ohne Betraege laut Zeilen 18 bis 22' -- erstattete USt, Anlagenverkauf und Entnahmen gehen woanders hin."
+    },
+    {
+      "schluessel": "EINNAHME_HONORAR_AUSLAND",
+      "bezeichnung": "Honorar Ausland (in DE nicht steuerbar)",
+      "bereich": 20,
+      "kennzahl": 111,
+      "sortierung": 20,
+      "hinweis": "US-Agentur, EU-Firma mit USt-IdNr. Zaehlt NICHT in den § 19-Grenzwert, ist aber sehr wohl Betriebseinnahme -- nachrichtlich zusaetzlich in KZ 119."
+    },
+    {
+      "schluessel": "EINNAHME_AUSLAGEN",
+      "bezeichnung": "Weiterbelastete Auslagen",
+      "bereich": 20,
+      "kennzahl": 111,
+      "sortierung": 30,
+      "hinweis": "Weiterberechnetes Hosting, Font-Lizenz, Reisekosten. Folgt dem Kundenstatus."
+    },
+    {
+      "schluessel": "EINNAHME_ERSTATTUNG",
+      "bezeichnung": "Erstattung einer Betriebsausgabe (kein Umsatz)",
+      "bereich": 20,
+      "kennzahl": 111,
+      "sortierung": 35,
+      "hinweis": "Ein Lieferant zahlt fuer eine schon gebuchte Ausgabe Geld zurueck (Gutschrift, Rueckerstattung). Betriebseinnahme, aber kein Umsatz: zaehlt NICHT in den § 19-Grenzwert. Das Werkzeug fuehrt Gutschriften nicht als negative Ausgabe; der Gewinn ist derselbe, als minderte sie die Ausgabe."
+    },
+    {
+      "schluessel": "EINNAHME_ANLAGENVERKAUF",
+      "bezeichnung": "Verkauf oder Entnahme eines Anlageguts",
+      "bereich": 20,
+      "kennzahl": 102,
+      "sortierung": 40,
+      "hinweis": "Alter Laptop verkauft, Monitor ueber eBay, Notebook ins Privatvermoegen. Bleibt beim § 19-Grenzwert ausser Ansatz."
+    },
+    {
+      "schluessel": "EINNAHME_ERSTATTETE_UST",
+      "bezeichnung": "Erstattete Umsatzsteuer",
+      "bereich": 20,
+      "kennzahl": 141,
+      "sortierung": 50,
+      "hinweis": "Als Kleinunternehmer normalerweise leer."
+    },
+
+    {
+      "schluessel": "FREMDLEISTUNG",
+      "bezeichnung": "Fremdleistungen & Subunternehmer",
+      "bereich": 25,
+      "kennzahl": 110,
+      "sortierung": 100,
+      "hinweis": "Freelance-Designer, Texter, Uebersetzungsbuero, weitergegebene Programmierarbeit."
+    },
+    {
+      "schluessel": "WARENEINKAUF",
+      "bezeichnung": "Waren & Material zum Weiterverkauf",
+      "bereich": 25,
+      "kennzahl": 100,
+      "sortierung": 110,
+      "hinweis": "Eingekaufte Hardware zum Weiterverkauf, Druckerzeugnisse fuer Kunden."
+    },
+    {
+      "schluessel": "HOSTING",
+      "bezeichnung": "Hosting, Domains & Cloud",
+      "bereich": 25,
+      "kennzahl": 228,
+      "sortierung": 120,
+      "hinweis": "Webhosting, Domain-Renewal, Hetzner, AWS, Mailserver, CDN, Backup-Speicher. Haeufig Reverse Charge."
+    },
+    {
+      "schluessel": "SAAS",
+      "bezeichnung": "Software-Abos (SaaS)",
+      "bereich": 25,
+      "kennzahl": 228,
+      "sortierung": 130,
+      "hinweis": "Adobe, Figma, GitHub, Claude-Abo, Jira, Passwortmanager. Haeufig Reverse Charge."
+    },
+    {
+      "schluessel": "IT_DIENSTLEISTUNG",
+      "bezeichnung": "IT-Dienstleistung & Wartung",
+      "bereich": 25,
+      "kennzahl": 228,
+      "sortierung": 140,
+      "hinweis": "Serveradministration, Security-Audit, IT-Support, Rechnerreparatur, Datenrettung."
+    },
+    {
+      "schluessel": "SOFTWARE_KAUF",
+      "bezeichnung": "Software-Kauf (Dauerlizenz)",
+      "bereich": 25,
+      "kennzahl": 132,
+      "grenze_netto_cent": 80000,
+      "sortierung": 150,
+      "hinweis": "JetBrains-Lizenz, Theme-Lifetime, Plugin- oder Font-Lizenz. Ueber 800 EUR netto wird es ein Anlagegut (KZ 131) und gehoert in die AVEUeR -- Anwendersoftware darf aber mit Nutzungsdauer 1 Jahr sofort voll abgezogen werden."
+    },
+    {
+      "schluessel": "HARDWARE_GWG",
+      "bezeichnung": "Hardware & Einrichtung bis 800 EUR netto",
+      "bereich": 25,
+      "kennzahl": 132,
+      "grenze_netto_cent": 80000,
+      "sortierung": 160,
+      "hinweis": "Monitor 450 EUR, Tastatur, Dockingstation, SSD, Buerostuhl 900 EUR brutto = 756 EUR netto. Ab 250 EUR netto zusaetzlich ins GWG-Verzeichnis (§ 6 Abs. 2 S. 4 EStG: Tag der Anschaffung und Anschaffungskosten). Gebucht wird der BRUTTO-Betrag."
+    },
+    {
+      "schluessel": "HARDWARE_ANLAGE",
+      "bezeichnung": "Hardware & Einrichtung über 800 € netto",
+      "bereich": 25,
+      "kennzahl": 130,
+      "sortierung": 170,
+      "hinweis": "MacBook 2.400 EUR, Workstation, Monitor 1.400 EUR brutto. Anlagegut: gehoert in die AVEUeR. IT-Hardware darf mit Nutzungsdauer 1 Jahr im Anschaffungsjahr voll abgezogen werden, muss aber trotzdem ins Verzeichnis."
+    },
+    {
+      "schluessel": "BUEROBEDARF",
+      "bezeichnung": "Bürobedarf, Porto & Fachliteratur",
+      "bereich": 25,
+      "kennzahl": 229,
+      "sortierung": 180,
+      "hinweis": "Papier und Toner, Briefmarken, DHL, Fachbuch, Zeitschriften-Abo."
+    },
+    {
+      "schluessel": "MIETE_BUERO",
+      "bezeichnung": "Miete Büro & Coworking",
+      "bereich": 25,
+      "kennzahl": 150,
+      "sortierung": 190,
+      "hinweis": "Coworking-Flatrate, Bueromiete, Nebenkosten, Lagerraum."
+    },
+    {
+      "schluessel": "TELEFON_INTERNET",
+      "bezeichnung": "Telefon & Internet",
+      "bereich": 25,
+      "kennzahl": 280,
+      "quote_default": 70,
+      "sortierung": 200,
+      "hinweis": "Mobilfunk und Internet anteilig. Die Quote gehoert an den Beleg oder den Lieferanten, nicht an die Kategorie -- sie wechselt mit dem Vertrag."
+    },
+    {
+      "schluessel": "HOMEOFFICE_PAUSCHALE",
+      "bezeichnung": "Homeoffice-Tagespauschale",
+      "bereich": 25,
+      "kennzahl": 163,
+      "sortierung": 210,
+      "hinweis": "6 EUR je Tag, hoechstens 1.260 EUR im Jahr. Berechnungsnachweis aus der Zeiterfassung. SCHLIESST das haeusliche Arbeitszimmer aus."
+    },
+    {
+      "schluessel": "ARBEITSZIMMER",
+      "bezeichnung": "Häusliches Arbeitszimmer",
+      "bereich": 25,
+      "kennzahl": 172,
+      "kennzahl_nicht_abziehbar": 162,
+      "sortierung": 220,
+      "hinweis": "Nur bei Taetigkeitsmittelpunkt oder als Jahrespauschale 1.260 EUR. SCHLIESST die Homeoffice-Tagespauschale aus -- beides zusammen geht nicht."
+    },
+    {
+      "schluessel": "STEUERBERATUNG",
+      "bezeichnung": "Steuer-, Rechts- & Buchhaltungskosten",
+      "bereich": 25,
+      "kennzahl": 194,
+      "sortierung": 230,
+      "hinweis": "Steuerberater, Jahresabschluss, AGB-Pruefung, Notar."
+    },
+    {
+      "schluessel": "BEITRAEGE_VERSICHERUNG",
+      "bezeichnung": "Beiträge, Gebühren, Abgaben & Versicherungen",
+      "bereich": 25,
+      "kennzahl": 223,
+      "sortierung": 240,
+      "hinweis": "IHK, Berufsverband, Berufshaftpflicht, Gewerbeanmeldung, Rechtsschutz."
+    },
+    {
+      "schluessel": "BANKGEBUEHREN",
+      "bezeichnung": "Bank- & Zahlungsgebühren",
+      "bereich": 25,
+      "kennzahl": 183,
+      "sortierung": 250,
+      "hinweis": "Kontofuehrung, Stripe- und PayPal-Gebuehren, Auslandsueberweisung."
+    },
+    {
+      "schluessel": "MIETE_LEASING",
+      "bezeichnung": "Miete & Leasing beweglicher Güter (ohne Kfz)",
+      "bereich": 25,
+      "kennzahl": 222,
+      "sortierung": 260,
+      "hinweis": "Geleaster Drucker, gemietetes Notebook, Messestand, Lagercontainer. Nur koerperliche Gegenstaende -- Software als Dienst gehoert zu 228."
+    },
+    {
+      "schluessel": "INSTANDHALTUNG",
+      "bezeichnung": "Instandhaltung & Reparatur (ohne EDV, ohne Kfz)",
+      "bereich": 25,
+      "kennzahl": 225,
+      "sortierung": 270,
+      "hinweis": "Moebelreparatur, Wartung, Schluesseldienst, Malerarbeiten."
+    },
+    {
+      "schluessel": "FORTBILDUNG",
+      "bezeichnung": "Fortbildung & Kurse (ohne Reisekosten)",
+      "bereich": 25,
+      "kennzahl": 281,
+      "sortierung": 280,
+      "hinweis": "Online-Kurs, Konferenzticket, Zertifizierungspruefung, Coaching. Hotel, Verpflegung und Fahrt zur Konferenz gehen in eigene Kennzahlen."
+    },
+    {
+      "schluessel": "REISE_UEBERNACHTUNG",
+      "bezeichnung": "Reise: Übernachtung & Nebenkosten",
+      "bereich": 25,
+      "kennzahl": 221,
+      "sortierung": 290,
+      "hinweis": "Hotel, Gepaeck- und Parkgebuehr, Visum."
+    },
+    {
+      "schluessel": "REISE_VERPFLEGUNG",
+      "bezeichnung": "Reise: Verpflegungspauschale",
+      "bereich": 25,
+      "kennzahl": 171,
+      "sortierung": 300,
+      "hinweis": "Nur Pauschbetraege (28 EUR / 14 EUR Inland) als Eigenbeleg. Echte Essensbelege auf Reisen sind NICHT abziehbar -- der Beleg dient nur dem Nachweis der Reise."
+    },
+    {
+      "schluessel": "REISE_FAHRTKOSTEN",
+      "bezeichnung": "Reise: Fahrtkosten (ÖPNV, Bahn, Flug, Taxi)",
+      "bereich": 25,
+      "kennzahl": 146,
+      "sortierung": 310,
+      "hinweis": "Bahnticket, Flug, Taxi, Deutschlandticket (anteilig), Mietwagen."
+    },
+    {
+      "schluessel": "FAHRT_PRIVATER_PKW",
+      "bezeichnung": "Fahrten mit privatem Pkw",
+      "bereich": 25,
+      "kennzahl": 147,
+      "sortierung": 320,
+      "hinweis": "Kilometeraufstellung 0,30 EUR je Kilometer als Nutzungseinlage. Kein Fremdbeleg, sondern ein Eigenbeleg aus der Aufstellung."
+    },
+    {
+      "schluessel": "WERBUNG",
+      "bezeichnung": "Werbung & Marketing",
+      "bereich": 25,
+      "kennzahl": 224,
+      "sortierung": 330,
+      "hinweis": "Google Ads, LinkedIn, Visitenkarten, Messestand, Fotoshooting."
+    },
+    {
+      "schluessel": "BEWIRTUNG",
+      "bezeichnung": "Bewirtung (geschäftlich)",
+      "bereich": 25,
+      "kennzahl": 175,
+      "kennzahl_nicht_abziehbar": 165,
+      "anteil_abziehbar_promille": 700,
+      "sortierung": 340,
+      "hinweis": "70 Prozent abziehbar, 30 Prozent nicht. Pflichtangaben auf dem Beleg: Ort, Tag, Teilnehmer, Anlass -- fehlt eine davon, ist nichts abziehbar."
+    },
+    {
+      "schluessel": "GESCHENKE",
+      "bezeichnung": "Geschenke an Kunden & Partner",
+      "bereich": 25,
+      "kennzahl": 174,
+      "kennzahl_nicht_abziehbar": 164,
+      "sortierung": 350,
+      "hinweis": "Empfaenger ist aufzuzeichnen. Freigrenze 50 EUR je Empfaenger und Jahr -- hier zaehlt anders als bei den GWG der BRUTTObetrag (R 9b Abs. 2 Satz 3 EStR). Ueberschreitung macht das ganze Geschenk nicht abziehbar."
+    },
+    {
+      "schluessel": "UEBRIGE",
+      "bezeichnung": "Übrige Betriebsausgaben",
+      "bereich": 25,
+      "kennzahl": 183,
+      "sortierung": 360,
+      "hinweis": "Fachforum-Mitgliedschaft, Kleinbetraege. 228, 229, 222 und 183 fliessen alle in dieselbe Summe KZ 199 -- eine Fehlzuordnung zwischen ihnen aendert den Gewinn um exakt null."
+    },
+    {
+      "schluessel": "NICHT_ABZIEHBAR",
+      "bezeichnung": "Nicht abziehbar",
+      "bereich": 25,
+      "kennzahl": 168,
+      "anteil_abziehbar_promille": 0,
+      "sortierung": 370,
+      "hinweis": "Gewerbesteuer, Geldbussen, Saeumniszuschlaege, reine Privatanteile. Wird erfasst, aber nicht abgezogen -- der Beleg existiert und soll auffindbar bleiben."
+    }
+  ]
+}

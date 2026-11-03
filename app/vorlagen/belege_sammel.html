@@ -1,0 +1,210 @@
+{% extends "basis.html" %}
+{% set aktiv = 'belege' %}
+{% block titel %}Alle prüfen und buchen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Alle prüfen und buchen</h1>
+<p class="hinweis">Gebucht wird, was sicher erkannt ist: Lieferant, Belegdatum und Bruttobetrag.
+  Betrag, Datum und Lieferant lassen sich nach dem Buchen nicht mehr ändern (§ 146 Abs. 4
+  AO) — was nicht sicher ist, bleibt im Eingang und wartet mit Grund auf die Prüfmaske.
+  Passt eine Datei zu einer Buchung, die schon da ist (aus WISO oder von Hand, ohne Datei),
+  wird sie dort angehängt statt ein zweites Mal gebucht. Gebuchte Belege stehen danach
+  unter „nur ungeklärte“, bis du sie mit „Stimmt so“ bestätigst; die Kategorie lässt sich
+  dort jederzeit ändern.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+
+{% set n = buchen | length %}
+<p><strong>{{ n }} {% if n == 1 %}Datei wird{% else %}Dateien werden{% endif %} gebucht</strong>,
+  {%- if zuordnen %} {{ zuordnen | length }} {% if zuordnen | length == 1 %}passt{% else %}passen{% endif %}
+  zu vorhandenen Buchungen,{% endif %}
+  {{ bleiben | length }} {% if bleiben | length == 1 %}bleibt{% else %}bleiben{% endif %} im
+  Eingang{% if dubletten %}, {{ dubletten | length }} {% if dubletten | length == 1 %}ist{% else
+  %}sind{% endif %} schon gebucht{% endif %}.</p>
+
+{% if not plaene %}
+<p class="leer">Im Eingang liegt nichts. <a href="/belege">Zurück zu den Belegen</a></p>
+{% else %}
+{# Ein Formular fuer alles: „N Belege buchen“ schickt es ab, „Vorschau
+   aktualisieren“ dieselben Felder als Abfrage an die Vorschau zurueck --
+   etwa nach einer anderen Kategorie oder „offen lassen“. Ohne Skript. #}
+<form method="post" action="/belege/alle-buchen" id="sammel">
+
+  {% if zuordnen %}
+  {# Zuerst, weil hier eine zweite Buchung derselben Ausgabe droht
+     (app/logik/beleg/anhaengen.py): Betrag gleich, Datum in der Naehe, der
+     Name nur Bonus. Sicher = angehakt; alles andere bestaetigt der Mensch. #}
+  <h2 id="zuordnen">Passt zu einer vorhandenen Buchung — zuordnen</h2>
+  <p class="hinweis">Diese Beträge stehen schon in der Buchhaltung (aus WISO übernommen oder
+    von Hand erfasst), nur die Datei fehlt. Passend sind gleicher Betrag und ein Datum bis
+    {{ fenster_tage }} Tage vom Belegdatum oder Zahltag entfernt; ein ähnlicher Name zählt
+    als Bonus, nicht als Bedingung. Angehakt kommt die Datei als Original an den gewählten
+    Eintrag — Betrag und Datum des Eintrags bleiben. <strong>Sicher</strong> erkannte sind
+    angehakt; <strong>zur Bestätigung</strong> (weiter entfernt, Name passt nicht) und
+    <strong>mehrdeutig</strong> (mehrere Einträge) wählst du selbst. Ohne Haken bleibt die
+    Datei liegen — nichts wird still doppelt gebucht.</p>
+  <p id="zuordnen-summe"><strong>{{ zuordnen_zusammenfassung }}.</strong></p>
+  <table class="sammel">
+    <thead><tr><th></th><th>Datei</th><th>Gelesen</th><th>Zuordnen an</th></tr></thead>
+    <tbody>
+    {% for p in zuordnen %}
+      {% set e = p.entscheidung %}{% set z = p.zuordnung %}
+      {% set f = e.lesung.vorschlag.felder %}
+      <tr>
+        <td class="wahl"><input type="checkbox" name="zuordnen" value="{{ p.eingangsname }}"
+                   {% if z.angehakt %}checked{% endif %}
+                   aria-label="{{ p.originalname }} zuordnen">
+          <input type="hidden" name="sha_{{ p.eingangsname }}" value="{{ p.sha256 }}">
+          <input type="hidden" name="zuordnen_alle" value="{{ p.eingangsname }}">
+          <input type="hidden" name="stufe_{{ p.eingangsname }}" value="{{ z.stufe }}"></td>
+        <td><a href="/belege/pruefen/{{ p.eingangsname | urlencode }}">{{ p.originalname }}</a><br>
+          <span class="chip {% if z.stufe == 'sicher' %}bezahlt{% elif z.stufe == 'wahrscheinlich' %}gestellt{% else %}ueberfaellig{% endif %}">{{ z.stufe_text }}</span></td>
+        <td data-label="Gelesen">{{ f.lieferant.wert if f.lieferant else '—' }}<br>
+          {{ (f.belegdatum.wert if f.belegdatum else '') | datum_de }} ·
+          {{ (f.brutto.wert | euro) if f.brutto else '—' }} €
+          {%- if z.gutschrift %} · <span class="chip gestellt">Gutschrift</span>{% endif %}</td>
+        <td data-label="Zuordnen an">
+          <select name="ziel_{{ p.eingangsname }}" aria-label="Zuordnung für {{ p.originalname }}">
+            {% for k in z.kandidaten %}
+              <option value="{{ k.ziel }}"
+                {% if z.vorschlag and k.schluessel == z.vorschlag.schluessel %}selected{% endif %}>
+                {{- k.bezeichnung }}{% if k.wiso_nummer %} (WISO Nr. {{ k.wiso_nummer }}){% endif %} ·
+                {{ k.datum | datum_de }}{% if k.bezahlt_am %}, bezahlt {{ k.bezahlt_am | datum_de }}{% endif %} ·
+                {{ k.betrag_cent | euro }} € · {{ k.name or 'ohne Namen' }} ·
+                {{ k.abstand }} {% if k.abstand == 1 %}Tag{% else %}Tage{% endif %}
+                {%- if k.name_passt %} · Name passt{% endif %}
+                {%- if k.schluessel in z.vergeben %} · für „{{ z.vergeben[k.schluessel] }}“ vorgesehen{% endif -%}
+              </option>
+            {% endfor %}
+            {% if p.neu_buchbar %}
+              <option value="neu">neu buchen — eine andere Ausgabe{% if e.kategorie %} ({{ e.kategorie }}){% endif %}</option>
+            {% endif %}
+            <option value="liegen" {% if not z.vorschlag %}selected{% endif %}>liegen lassen</option>
+          </select>
+          {% if z.vorschlag and z.vorschlag.kurztext %}<br><small class="gedaempft">{{ z.vorschlag.kurztext }}</small>{% endif %}
+          {% if not z.vorschlag %}<br><small class="gedaempft">alle passenden Einträge sind für andere
+            Dateien dieses Stapels vorgesehen</small>{% endif %}
+          {% if not p.neu_buchbar %}<br><small class="gedaempft">neu buchen nur in der Prüfmaske:
+            {{ e.grund }}</small>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if sichere %}
+  <div class="knopfzeile">
+    <button type="submit" name="nur_sichere" value="1" class="leise">{% if sichere == 1 %}Die sichere
+      Zuordnung übernehmen{% else %}Alle {{ sichere }} sicheren Zuordnungen übernehmen{% endif %}</button>
+    <span class="hinweis">nur diese — nichts Neues buchen, nichts wegwerfen</span>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <fieldset>
+    <legend>Zahlung</legend>
+    <label class="zeile"><input type="radio" name="zahlung" value="bezahlt"
+      {% if bezahlt %}checked{% endif %}> alle als bezahlt am Belegdatum buchen</label>
+    <label class="zeile"><input type="radio" name="zahlung" value="offen"
+      {% if not bezahlt %}checked{% endif %}> offen lassen — die Zahlung später in der Liste
+      erfassen</label>
+    <p class="hinweis">Für die EÜR zählt der Tag der Zahlung (§ 11 EStG). Mit „bezahlt“ bleibt
+      ein Beleg vom 22.12. bis 10.01. im Eingang: dort entscheidet der Zahltag das Jahr, und
+      den bestätigst du in der Prüfmaske.</p>
+  </fieldset>
+
+  {% if buchen %}
+  <h2>Wird gebucht</h2>
+  {% if vorjahr_warnung %}
+  {# Vor dem Klick: eine Zahlung im Vorjahr aendert dessen EUeR. Wer das
+     nicht will, nimmt den Haken weg oder laesst die Zahlung offen. #}
+  <div class="meldung warn" id="vorjahr">{{ vorjahr_warnung }} Wenn das nicht gewollt ist: den
+    Haken der betroffenen Zeile entfernen oder oben „offen lassen“ wählen.</div>
+  {% endif %}
+  <table class="sammel">
+    <thead><tr><th></th><th>Datei</th><th>Lieferant</th><th>Datum</th>
+      <th class="zahl">Betrag</th><th>Kategorie</th><th>Bezahlt</th></tr></thead>
+    <tbody>
+    {% for p in buchen %}
+      {% set e = p.entscheidung %}
+      <tr>
+        <td class="wahl"><input type="checkbox" name="buchen" value="{{ p.eingangsname }}" checked
+                   aria-label="{{ p.originalname }} buchen">
+          <input type="hidden" name="sha_{{ p.eingangsname }}" value="{{ p.sha256 }}"></td>
+        <td><a href="/belege/pruefen/{{ p.eingangsname | urlencode }}">{{ p.originalname }}</a></td>
+        <td data-label="Lieferant">{{ e.lieferant }}{% if p.neuer_lieferant %} <span class="chip gestellt"
+          title="Wird mit diesem Namen angelegt">neu</span>{% endif %}</td>
+        <td class="datum" data-label="Datum">{{ e.belegdatum | datum_de }}</td>
+        <td class="zahl mono" data-label="Betrag">{% if e.waehrung != 'EUR' %}{{ e.brutto_cent | euro }} {{ e.waehrung }}
+          {%- if e.euro_cent %}<br><span class="gedaempft">{{ e.euro_cent | euro }} €</span>{% endif %}
+          {%- else %}{{ e.brutto_cent | euro }} €{% endif %}</td>
+        <td data-label="Kategorie"><select name="kategorie_{{ p.eingangsname }}" aria-label="Kategorie für {{ p.originalname }}">
+            <option value="">— ohne Kategorie —</option>
+            {% for k in kategorien %}
+              <option value="{{ k.id }}" {% if k.id == e.kategorie_id %}selected{% endif %}>{{ k.bezeichnung }}</option>
+            {% endfor %}
+          </select>
+          {%- if e.kategorie_herkunft %}<br><small class="gedaempft">{{ e.kategorie_herkunft }}</small>
+          {%- else %}<br><small class="gedaempft">später in der Liste zuordnen</small>{% endif %}</td>
+        <td class="datum" data-label="Bezahlt">{% if e.zahltag %}{{ e.zahltag | datum_de }}
+          {%- if e.vorjahr %} <span class="chip ueberfaellig" title="Die Zahlung zählt in der EÜR {{ e.vorjahr }} — evtl. schon abgegeben">EÜR {{ e.vorjahr }}</span>{% endif %}
+          {%- else %}<span class="chip gestellt">offen</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if dubletten %}
+  <h2>Schon gebucht — dieselbe Datei</h2>
+  <p class="hinweis">Byte für Byte schon als Beleg gebucht; die Datei liegt mit Prüfsumme im
+    Archiv. Angehakt wird die Kopie im Eingang weggeworfen.</p>
+  <table>
+    <thead><tr><th></th><th>Datei</th><th>Gebucht als</th></tr></thead>
+    <tbody>
+    {% for p in dubletten %}
+      <tr>
+        <td><input type="checkbox" name="wegwerfen" value="{{ p.eingangsname }}" checked
+                   aria-label="{{ p.originalname }} wegwerfen"></td>
+        <td>{{ p.originalname }}</td>
+        <td><a href="/belege#beleg-{{ p.entscheidung.dublette_von }}">Beleg {{ p.entscheidung.dublette_von }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if bleiben %}
+  <h2>Bleibt im Eingang</h2>
+  <table>
+    <thead><tr><th>Datei</th><th>Grund</th><th></th></tr></thead>
+    <tbody>
+    {% for p in bleiben %}
+      <tr>
+        <td>{{ p.originalname }}</td>
+        <td>{{ p.grund }}
+          {%- if p.eingangsname in wahl %}
+          <br><select name="kategorie_{{ p.eingangsname }}" aria-label="Kategorie für {{ p.originalname }}">
+            <option value="">— ohne Kategorie —</option>
+            {% for k in kategorien %}
+              <option value="{{ k.id }}" {% if k.id == wahl[p.eingangsname] %}selected{% endif %}>{{ k.bezeichnung }}</option>
+            {% endfor %}
+          </select>{% endif %}</td>
+        <td class="aktionen">{% if p.sha256 %}<a href="/belege/pruefen/{{ p.eingangsname | urlencode }}">prüfen</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="knopfzeile">
+    {% if buchen or dubletten or zuordnen %}
+    <button type="submit">{% if n == 1 %}1 Beleg buchen{% elif n %}{{ n }} Belege buchen{% endif %}
+      {%- if n and zuordnen %} und Zuordnungen übernehmen{% elif zuordnen %}Zuordnungen übernehmen
+      {%- elif not n %}Ausgewählte wegwerfen{% endif %}</button>
+    {% endif %}
+    <button type="submit" formmethod="get" formaction="/belege/alle-buchen" class="leise">Vorschau
+      aktualisieren</button>
+    <a href="/belege#eingang">Abbrechen</a>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

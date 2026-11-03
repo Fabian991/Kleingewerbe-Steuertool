@@ -1,0 +1,654 @@
+{% extends "basis.html" %}
+{% set aktiv = 'steuer' %}
+{% block titel %}Steuerrücklage {{ jahr }} · Steuer-Tool{% endblock %}
+{% set e = ergebnis %}
+{% macro satz(wert) %}{{ wert | prozent }} %{% endmacro %}
+{# Nach einer 422: das betroffene Feld markieren, den Fokus hineinsetzen und die
+   Meldung direkt darunter wiederholen -- auf dem Handy liegt es sonst rund
+   1.000 px unter der Meldung oben. #}
+{% macro markiert(name) -%}
+  {%- if fehler_feld == name %} aria-invalid="true" aria-describedby="feldfehler-{{ name }}"
+    autofocus{% endif -%}
+{%- endmacro %}
+{% macro feldfehler(name) -%}
+  {%- if fehler_feld == name %}<span class="feldfehler" id="feldfehler-{{ name }}">{{ fehler }}</span>{% endif -%}
+{%- endmacro %}
+{#- Die vier Raten eines Empfaengers: Betrag je Termin und der Haken "gezahlt".
+    Faellige Raten sind vorbelegt angehakt (die Lastschrift bucht am
+    Faelligkeitstag ab), kuenftige nicht -- der Haken uebersteuert beides. #}
+{% macro raten(empfaenger) -%}
+<div class="raten">
+  {% for r in raten_felder[empfaenger] %}
+  <div class="rate">
+    <label>{{ r.quartal }}. Quartal · {{ r.faellig | datum_de }}
+      {%- if r.verschoben %} <small>(Termin fiel auf Wochenende oder Feiertag)</small>{% endif %}
+      <input name="{{ r.feld }}" inputmode="decimal" autocomplete="off"
+             value="{{ r.betrag }}" placeholder="—"{{ markiert(r.feld) }}>
+      {{ feldfehler(r.feld) }}</label>
+    <label class="abhaken"><input type="checkbox" name="vz_gezahlt" value="{{ r.schluessel }}"
+      {%- if r.angehakt %} checked{% endif %}>
+      <span>{% if r.faellig_vorbei %}gezahlt{% else %}schon gezahlt{% endif %}</span></label>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+{% block inhalt %}
+<h1>Steuerrücklage {{ jahr }}</h1>
+<p class="hinweis">Wie viel Steuer dein Gewerbe voraussichtlich zusätzlich kostet. Auf dein
+  Gehalt zahlst du über die Lohnsteuer jeden Monat — auf den Gewinn nicht. Die Rechnung dafür
+  kommt mit dem Steuerbescheid, oft erst im Folgejahr und in einem Betrag.</p>
+
+<form method="get" action="/steuer" class="inline nicht-drucken">
+  <label>Jahr
+    <select name="jahr" onchange="this.form.submit()">
+      {% for j in jahre %}
+      <option value="{{ j }}" {% if j == jahr %}selected{% endif %}>{{ j }}</option>
+      {% endfor %}
+      {% if jahr not in jahre %}<option value="{{ jahr }}" selected>{{ jahr }}</option>{% endif %}
+    </select></label>
+  <noscript><button type="submit">Anzeigen</button></noscript>
+</form>
+
+{% if fehler %}<div class="meldung fehler" role="alert">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg nicht-drucken" role="status">{{ erfolg }}</div>{% endif %}
+{% for name, cent in afa_fehlt %}
+<div class="meldung warn">AfA für {{ name }} fehlt (WISO: {{ cent | euro }} €) — der Gewinn
+  laut EÜR ist um diesen Betrag zu hoch, die Schätzung damit auch.
+  <a href="/anlagen#angaben">Angaben ausfüllen</a></div>
+{% endfor %}
+
+<div class="steuer-raster">
+
+<section class="steuer-eingaben nicht-drucken" aria-labelledby="eingaben-titel">
+  <h2 id="eingaben-titel">Deine Angaben</h2>
+  <form method="post" action="/steuer" class="steuer-formular">
+    <input type="hidden" name="jahr" value="{{ jahr }}">
+
+    <fieldset>
+      <legend>Einkommen ohne Gewerbe</legend>
+      <label>Bruttogehalt {{ jahr }}
+        <input name="brutto_lohn" inputmode="decimal" autocomplete="off"
+               value="{{ formular.brutto_lohn }}" placeholder="z. B. 48.000"{{ markiert('brutto_lohn') }}>
+        {{ feldfehler('brutto_lohn') }}
+        <small>Jahresbrutto laut Lohnabrechnung (Dezember) oder Vertrag. 0, wenn du kein Gehalt
+          beziehst.</small></label>
+      <label>Oder genauer: zu versteuerndes Einkommen ohne Gewerbe
+        <input name="zve_ohne" inputmode="decimal" autocomplete="off"
+               value="{{ formular.zve_ohne }}" placeholder="aus dem letzten Steuerbescheid"{{ markiert('zve_ohne') }}>
+        {{ feldfehler('zve_ohne') }}
+        <small>Steht im letzten Steuerbescheid als „zu versteuerndes Einkommen“ — ohne den
+          Gewinn aus dem Gewerbe. Geht dem Bruttogehalt vor.</small></label>
+      <div class="auswahl" role="radiogroup" aria-label="Veranlagung"{{ markiert('veranlagung') | replace(' autofocus', '') }}>
+        <label class="zeile"><input type="radio" name="veranlagung" value="EINZEL"
+          {% if formular.veranlagung != 'ZUSAMMEN' %}checked{% endif %}> Einzeln</label>
+        <label class="zeile"><input type="radio" name="veranlagung" value="ZUSAMMEN"
+          {% if formular.veranlagung == 'ZUSAMMEN' %}checked{% endif %}> Zusammen
+          (verheiratet, Splitting)</label>
+        {{ feldfehler('veranlagung') }}
+      </div>
+      <label class="nur-zusammen">Bruttogehalt Partner/in {{ jahr }}
+        <input name="partner_brutto" inputmode="decimal" autocomplete="off"
+               value="{{ formular.partner_brutto }}" placeholder="z. B. 30.000"{{ markiert('partner_brutto') }}>
+        {{ feldfehler('partner_brutto') }}
+        <small>Nur bei Zusammenveranlagung und nur, wenn du oben das Bruttogehalt angibst.
+          0, wenn dein Partner oder deine Partnerin kein Gehalt bezieht.</small></label>
+      <label>Kirchensteuer
+        <select name="kirchensteuer"{{ markiert('kirchensteuer') }}>
+          <option value="0" {% if formular.kirchensteuer in ('', '0') %}selected{% endif %}>keine</option>
+          {% for s in kirchensteuer_saetze %}
+          <option value="{{ s }}" {% if formular.kirchensteuer == s | string %}selected{% endif %}>
+            {{ s }} %{% if s == 8 %} (Bayern, Baden-Württemberg){% else %} (übrige Länder){% endif %}</option>
+          {% endfor %}
+        </select>{{ feldfehler('kirchensteuer') }}</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Gewerbe {{ jahr }}</legend>
+      <p class="feldtext">Gewinn laut <a href="/euer?jahr={{ jahr }}">EÜR {{ jahr }}</a>
+        {%- if laufendes_jahr %} bis heute{% endif %}:
+        <strong class="mono">{{ auswertung.gewinn_cent | euro_text }} €</strong></p>
+      {% if hochrechnung %}
+      <p class="feldtext hinweis">Gleichmäßig weitergerechnet wären es aufs ganze Jahr etwa
+        <strong>{{ hochrechnung.jahr_cent | euro_ganz }} €</strong>
+        ({{ hochrechnung.monate }} {{ 'Monat' if hochrechnung.monate == 1 else 'Monate' }} × 12).
+        <button type="button" class="leise" data-fuellen="gewinn_erwartet"
+                data-wert="{{ hochrechnung.jahr_cent | euro }}" hidden>Als erwarteten
+          Jahresgewinn eintragen</button></p>
+      {% endif %}
+      <label>Erwarteter Jahresgewinn
+        <input name="gewinn_erwartet" inputmode="decimal" autocomplete="off"
+               value="{{ formular.gewinn_erwartet }}" placeholder="leer = Gewinn laut EÜR"{{ markiert('gewinn_erwartet') }}>
+        {{ feldfehler('gewinn_erwartet') }}
+        <small>Wenn du weißt, dass bis Jahresende noch etwas dazukommt. Ein Verlust mit Minus.</small></label>
+      <label>Hebesatz der Gewerbesteuer (%)
+        <input name="hebesatz" inputmode="numeric" autocomplete="off"
+               value="{{ formular.hebesatz }}" placeholder="{{ hebesatz_vorschlag }}"{{ markiert('hebesatz') }}>
+        {{ feldfehler('hebesatz') }}
+        <small>Der Hebesatz deiner Gemeinde, steht auf ihrer Website. Vorbelegt mit dem
+          Durchschnitt {{ hebesatz_vorschlag }} %. Gewerbesteuer fällt erst über {{ gewst_freibetrag_cent | euro_ganz }} €
+          Gewinn an. Mindestens {{ mindesthebesatz }} %.</small></label>
+    </fieldset>
+
+    <fieldset class="vorauszahlungen" id="vorauszahlungen">
+      <legend>Vorauszahlungen {{ jahr }} laut Bescheid</legend>
+      <p class="feldtext hinweis">Die Beträge aus dem Vorauszahlungsbescheid — auch für Termine, die
+        noch kommen. Eine fällige Rate gilt als gezahlt, weil sie am Fälligkeitstag abgebucht
+        wird; der Haken übersteuert das („noch nicht gezahlt“ bzw. „schon gezahlt“).</p>
+      <input type="hidden" name="vz_stand" value="{{ formular.vz_stand }}">
+      <p class="feldtext"><strong>Finanzamt</strong> — Einkommensteuer + Soli + Kirchensteuer,
+        ein Betrag je Termin, wie im Bescheid zusammengezählt.</p>
+      {{ raten('FINANZAMT') }}
+      <details class="raten-gemeinde"{% if gemeinde_offen %} open{% endif %}>
+        <summary>Gemeinde — Gewerbesteuer (15.02., 15.05., 15.08., 15.11.)</summary>
+        <p class="feldtext hinweis">Nur, wenn die Gemeinde Vorauszahlungen festgesetzt hat; bis
+          {{ gewst_freibetrag_cent | euro_ganz }} € Gewinn fällt keine Gewerbesteuer an.</p>
+        {{ raten('GEMEINDE') }}
+      </details>
+      {% if vorjahr_werte %}
+      <button type="button" class="leise" data-vorjahr='{{ vorjahr_werte | tojson }}' hidden>Beträge
+        aus {{ jahr - 1 }} übernehmen</button>
+      {% endif %}
+      <label>Weitere gezahlte Vorauszahlungen ohne Termin
+        <input name="vorauszahlungen" inputmode="decimal" autocomplete="off"
+               value="{{ formular.vorauszahlungen }}" placeholder="0"{{ markiert('vorauszahlungen') }}>
+        {{ feldfehler('vorauszahlungen') }}
+        <small>Etwa eine nachträgliche Erhöhung (§ 37 Abs. 4 EStG), die außerhalb der
+          Quartalstermine fällig war. Zählt als schon gezahlt.</small></label>
+      {% if formular.vorauszahlungen and (raten_felder.FINANZAMT + raten_felder.GEMEINDE)
+            | selectattr('betrag') | list %}
+      <p class="feldtext feldwarnung">Neben den Raten steht hier ein Betrag ohne Termin. Stammt er
+        noch aus dem früheren Feld „Schon gezahlte Vorauszahlungen“, verteile ihn auf die
+        Quartale und leere dieses Feld — sonst zählt er doppelt.</p>
+      {% endif %}
+    </fieldset>
+
+    <fieldset>
+      <legend>Steuersatz</legend>
+      <label>Eigener Steuersatz auf den Gewinn (%)
+        <input name="satz_manuell" inputmode="decimal" autocomplete="off"
+               value="{{ formular.satz_manuell }}" placeholder="leer = berechnet"{{ markiert('satz_manuell') }}>
+        {{ feldfehler('satz_manuell') }}
+        <small>Leer lassen, dann gilt der berechnete Satz{% if e and e.satz_berechnet is not none %}
+          ({{ satz(e.satz_berechnet) }}){% endif %}. Ein eigener Satz gilt für alles zusammen —
+          Einkommensteuer, Soli, Kirchen- und Gewerbesteuer.</small></label>
+      {% if e and e.satz_vorschlag is not none %}
+      {% set vorschlag = e.satz_vorschlag %}
+      <button type="button" class="leise" data-fuellen="satz_manuell"
+              data-wert="{{ vorschlag | prozent }}" hidden>Berechneten Satz übernehmen
+        ({{ satz(vorschlag) }}, auf 0,1 % aufgerundet)</button>
+      {% endif %}
+      {% if entwurf_verfuegbar %}
+      <label class="abhaken"><input type="checkbox" name="tarif_entwurf" value="1"
+        {% if formular.tarif_entwurf %}checked{% endif %}>
+        <span>Mit dem Tarifentwurf für {{ jahr }} rechnen <small>— vorläufig, noch kein
+          Gesetz</small></span></label>
+      {% endif %}
+    </fieldset>
+
+    <div class="knopfzeile">
+      <button type="submit">Berechnen und speichern</button>
+      {% if geaendert_am %}<small class="gedaempft">Zuletzt gespeichert
+        {{ geaendert_am | zeit_lokal }}</small>{% endif %}
+    </div>
+  </form>
+  {#- Zwei Schritte ohne Skript: erst aufklappen, dann bestaetigen. Die alten
+      Werte bleiben im Journal. #}
+  {% if gespeichert %}
+  <details class="loeschen">
+    <summary>Angaben für {{ jahr }} löschen</summary>
+    <form method="post" action="/steuer/loeschen" class="inline">
+      <input type="hidden" name="jahr" value="{{ jahr }}">
+      <p class="hinweis">Alle Angaben für {{ jahr }} werden entfernt; das Jahr verschwindet aus
+        der Auswahl, wenn es dort sonst nichts gibt. Die alten Werte stehen im Journal.</p>
+      <button type="submit" class="still">Ja, Angaben für {{ jahr }} löschen</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+<section class="steuer-ergebnis" id="ergebnis" aria-labelledby="ergebnis-titel">
+  <h2 id="ergebnis-titel">Ergebnis</h2>
+  {% if not e %}
+  {% if eingabefehler %}
+  <p class="leer">Bitte erst die Angabe korrigieren, die oben gemeldet ist — dann steht hier das
+    Ergebnis für deine neuen Angaben. Gespeichert ist noch nichts davon.</p>
+  {% elif fehlt and 'Partner' in fehlt %}
+  <p class="leer">Für die Zusammenveranlagung fehlt noch {{ fehlt }}. Ohne diese Angabe
+    rechnete das Splitting mit einem Partner ohne Einkommen, und die Rücklage wäre deutlich zu
+    niedrig.</p>
+  {% else %}
+  <p class="leer">Trag dein Bruttogehalt ein — oder 0, wenn du keines beziehst. Dann steht
+    hier, wie viel du für {{ jahr }} zurücklegen solltest.</p>
+  {% set allein, neben = beispiel %}
+  <p class="hinweis">Ohne diese Angabe wäre jede Zahl geraten: 10.000 € Gewinn kosten
+    {{ jahr }} ohne weiteres Einkommen {% if allein %}etwa {{ allein | euro_ganz }} €{% else
+    %}keine Einkommensteuer{% endif %}, neben 50.000 € Gehalt rund {{ neben | euro_ganz }} €.</p>
+  {% endif %}
+  {% else %}
+  {% set voraus = e.vz_gezahlt_cent %}
+  {% set voraus_gesamt = e.vz_gesamt_cent %}
+  <div class="ruecklage">
+    <div class="label">So viel solltest du mindestens zurücklegen</div>
+    <div class="wert">{{ e.offen_cent | euro_ganz }} €</div>
+    <div class="label">
+      {#- Nachrechenbar: die Steuer mit Cent minus Vorauszahlungen, dann aufgerundet.
+          Mit gerundeten Zahlen ergaeben 4.400 − 1.005 nicht die 3.390 darueber.
+          Mit Raten darunter die Aufteilung: was noch abgebucht wird und was mit
+          dem Bescheid kommt -- alles exakt in Cent. #}
+      {%- if e.termine and e.gewinn_cent != 0 %}
+      <ul class="aufteilung">
+        <li>{% if e.reststeuer_cent >= 0 %}Steuer auf den Gewinn {{ e.mehrsteuer_cent | euro_text }} €
+          minus schon vorausgezahlt {{ voraus | euro_text }} € = {{ e.reststeuer_cent | euro_text }} €
+          {%- else %}Schon vorausgezahlt {{ voraus | euro_text }} € — mehr als die geschätzte
+          Steuer auf den Gewinn von {{ e.mehrsteuer_cent | euro_text }} €{% endif %}</li>
+        {% for t in e.vz_offen %}
+        <li>{{ 'davon fällig' if e.reststeuer_cent >= t.betrag_cent and loop.first else 'fällig' }}
+          am {{ t.faellig | datum_de }} ({{ empfaenger_text[t.empfaenger] }}):
+          {{ t.betrag_cent | euro_text }} €
+          {%- if t.ueberfaellig %} — als nicht gezahlt markiert{% endif %}</li>
+        {% endfor %}
+        {% if e.bescheid_cent > 0 %}
+        <li>voraussichtlich mit dem Bescheid: {{ e.bescheid_cent | euro_text }} €</li>
+        {% elif e.bescheid_cent < 0 %}
+        <li>voraussichtlich mit dem Bescheid zurück: {{ (-e.bescheid_cent) | euro_text }} €</li>
+        {% endif %}
+        {% if e.vz_noch_faellig_cent > e.reststeuer_cent %}
+        <li>Die festgesetzten Raten werden abgebucht, auch wenn die Schätzung darunter liegt —
+          deshalb mindestens {{ e.vz_noch_faellig_cent | euro_text }} €.</li>
+        {% endif %}
+        <li>auf volle 10 € aufgerundet</li>
+      </ul>
+      {%- elif voraus and e.mehrsteuer_cent > voraus %}
+      Steuer auf den Gewinn {{ e.mehrsteuer_cent | euro_text }} € minus schon vorausgezahlt
+      {{ voraus | euro_text }} € = {{ (e.mehrsteuer_cent - voraus) | euro_text }} €, auf volle 10 €
+      aufgerundet
+      {%- elif voraus and e.mehrsteuer_cent > 0 %}
+      Die Vorauszahlungen von {{ voraus | euro_ganz }} € decken die geschätzte Steuer auf den
+      Gewinn von {{ e.mehrsteuer_cent | euro_ganz }} €.
+      {%- else %}
+      auf volle 10 € aufgerundet
+      {%- endif %}</div>
+  </div>
+
+  {% if e.erwartet_unter_euer %}
+  <div class="meldung warn">Dein erwarteter Jahresgewinn
+    (<strong>{{ e.gewinn_cent | euro_ganz }} €</strong>) liegt unter dem Gewinn laut EÜR
+    {%- if laufendes_jahr %} bis heute{% else %} {{ jahr }}{% endif %}
+    (<strong>{{ e.gewinn_bisher_cent | euro_ganz }} €</strong>). Gerechnet wird mit dem
+    erwarteten Wert; allein der Gewinn laut EÜR ergäbe
+    <strong>{{ e.offen_laut_euer_cent | euro_ganz }} €</strong>. Stimmt die Erwartung noch —
+    etwa weil bis zum Jahresende größere Ausgaben kommen? Sonst bitte anpassen oder das Feld
+    leeren.</div>
+  {% endif %}
+
+  {% for t in e.ueberfaellig %}
+  <div class="meldung warn">Die Rate vom {{ t.faellig | datum_de }} an
+    {{ 'das Finanzamt' if t.empfaenger == 'FINANZAMT' else 'die Gemeinde' }}
+    ({{ t.betrag_cent | euro_text }} €) ist als <strong>nicht gezahlt</strong> markiert. Auf eine
+    verspätete Zahlung kommt ein Säumniszuschlag von 1 % je angefangenem Monat (§ 240 AO) —
+    bitte überweisen oder den Haken setzen, wenn sie doch abgebucht wurde.</div>
+  {% endfor %}
+  {% set herabsetzen = e.vz_abweichungen | selectattr('zu_hoch') | list %}
+  {% for a in e.vz_abweichungen %}
+  {% set stelle = 'an das Finanzamt' if a.empfaenger == 'FINANZAMT' else ('an die Gemeinde'
+                  if a.empfaenger == 'GEMEINDE' else '') %}
+  {% if a.zu_hoch %}
+  <div class="meldung warn">Die festgesetzten Vorauszahlungen {{ stelle }} liegen um etwa
+    <strong>{{ a.betrag_cent | euro_ganz }} €</strong> über der Schätzung — mehr als 100 € je
+    Termin. <strong>Herabsetzung der Vorauszahlungen beantragen ({{ a.vorschrift }})</strong>:
+    formlos, mit einer Gewinnprognose. Bis dahin werden die festgesetzten Raten abgebucht; zu
+    viel Gezahltes kommt mit dem Bescheid zurück.</div>
+  {% else %}
+  <div class="meldung warn">Die Schätzung liegt um etwa
+    <strong>{{ (-a.betrag_cent) | euro_ganz }} €</strong> über den festgesetzten
+    Vorauszahlungen{{ ' ' ~ stelle if stelle }}. Die Differenz kommt mit dem Bescheid als
+    Nachzahlung; ab dem 15. Monat nach Jahresende kommen Zinsen dazu (§ 233a AO). Du kannst die
+    Vorauszahlungen von dir aus anpassen lassen ({{ a.vorschrift }}) — oder das Geld bis dahin
+    zurücklegen.</div>
+  {% endif %}
+  {% endfor %}
+
+  {#- Erst der fehlende Gewinn: ohne ihn gibt es weder Steuer noch Erstattung. #}
+  {% if e.gewinn_cent == 0 and e.gewinn_aus_euer %}
+  <p class="hinweis">Für {{ jahr }} steht noch kein Gewinn in der EÜR. Trag einen erwarteten
+    Jahresgewinn ein, um vorab zu rechnen.</p>
+  {% elif e.gewinn_cent < 0 %}
+  <div class="meldung erfolg">Der Gewinn ist negativ: ein Verlust von
+    {{ (-e.gewinn_cent) | euro_ganz }} €.
+    {%- if e.mehrsteuer_cent < 0 %} Er senkt die Steuer auf dein übriges Einkommen um etwa
+    <strong>{{ (-e.mehrsteuer_cent) | euro_ganz }} €</strong>
+    {%- if e.arbeitslohn %} — die Lohnsteuer war dann zu hoch, das gibt es mit der
+    Steuererklärung zurück{% endif %}.
+    {%- else %} Er senkt hier keine Steuer: auf dein übriges Einkommen fällt keine
+    Einkommensteuer an.{% endif %}
+    {%- if voraus_gesamt %} Die Vorauszahlungen von {{ voraus_gesamt | euro_ganz }} € kommen
+    voraussichtlich ebenfalls zurück
+    {%- if e.mehrsteuer_cent < 0 %} — zusammen etwa
+    <strong>{{ e.zurueck_cent | euro_ganz }} €</strong>{% endif %}.{% endif %}</div>
+  {% elif e.zurueck_cent > 0 and not herabsetzen %}
+  <div class="meldung erfolg">Die Vorauszahlungen liegen um etwa
+    <strong>{{ e.zurueck_cent | euro_ganz }} €</strong> über der Schätzung — voraussichtlich
+    gibt es das mit dem Bescheid zurück.</div>
+  {% endif %}
+
+  {% if e.gewinn_cent > 0 %}
+  <p class="satzzeile">
+    {%- if e.mit_eigenem_satz %}
+    Gerechnet mit <strong>deinem Satz von {{ satz(e.satz_manuell) }}</strong> auf
+    {{ e.gewinn_cent | euro_ganz }} € Gewinn.
+    {%- if e.berechnet %} Berechnet wären es
+    {{ satz(e.satz_berechnet) }} ({{ e.mehrsteuer_berechnet_cent | euro_ganz }} €).
+    {%- else %} Einen berechneten Vergleich gibt es mit dem Bruttogehalt oder dem zu
+    versteuernden Einkommen.{% endif %}
+    {%- else %}
+    Das sind <strong>{{ satz(e.satz_berechnet) }}</strong> von
+    {{ e.gewinn_cent | euro_ganz }} € Gewinn — im Durchschnitt, alle Steuern zusammen.
+    {%- endif %}
+    {% if e.berechnet %}Grenzsteuersatz: <strong>{{ e.grenzsatz | prozent_abgeschnitten }} %</strong>
+    <small>
+    {%- if e.haertebereich == 'frei' %}Bis {{ veranlagung.haerteausgleich_voll_bis_euro }} € Gewinn
+      neben dem Gehalt kostet ein weiterer Euro aber nichts (Härteausgleich, § 46 Abs. 3 EStG);
+      darüber zählt er zunächst doppelt.
+    {%- elif e.haertebereich == 'doppelt' %}Zwischen {{ veranlagung.haerteausgleich_voll_bis_euro }}
+      und {{ veranlagung.haerteausgleich_gleitend_bis_euro }} € Gewinn schmilzt der Härteausgleich
+      ab: jeder weitere Euro erhöht das zu versteuernde Einkommen um 2 € und kostet etwa
+      {{ (2 * e.grenzsatz) | prozent(0) }} %.
+    {%- else %}Nur die Einkommensteuer auf den nächsten Euro
+      {%- if e.zuschlaege_grenze %}; mit {{ e.zuschlaege_grenze[:-1] | join(', ') }}
+      {%- if e.zuschlaege_grenze | length > 1 %} und {% endif %}{{ e.zuschlaege_grenze[-1] }}
+      kostet er mehr{% endif %}.{% endif %}</small>{% endif %}
+  </p>
+  {% endif %}
+
+  {% if e.cent_je_euro %}
+  <p class="faustregel"><strong>Faustregel:</strong> Lege von jedem Euro, der für dein Gewerbe
+    eingeht, etwa <strong>{{ e.cent_je_euro }} Cent</strong> zur Seite.
+    <small>Steuersatz auf den Gewinn × Anteil des Gewinns an den Einnahmen {{ jahr }}
+      ({{ e.gewinn_bisher_cent | euro_ganz }} € von {{ e.einnahmen_bisher_cent | euro_ganz }} €)
+      {%- if voraus_gesamt %}; die Vorauszahlungen gehören dazu{% endif %}.</small></p>
+  {% endif %}
+
+  {% if e.berechnet %}
+  <table class="aufschluesselung">
+    <caption>{% if e.mit_eigenem_satz %}Berechnet, zum Vergleich{% else %}So setzt sich der
+      Betrag zusammen{% endif %}</caption>
+    <tbody>
+      <tr><td>Einkommensteuer auf den Gewinn</td>
+        <td class="zahl mono">{{ e.mehr_est_tariflich_cent | euro_text }} €</td></tr>
+      {% if e.anrechnung_35_cent %}
+      <tr><td>Anrechnung der Gewerbesteuer <small>(§ 35 EStG)</small></td>
+        <td class="zahl mono">−{{ e.anrechnung_35_cent | euro_text }} €</td></tr>
+      {% endif %}
+      <tr><td>Solidaritätszuschlag
+        {%- if not e.mehr_soli_cent %} <small>(erst bei mehr als
+          {{ (100 * (soli_freigrenze.zusammen_euro if e.eingaben.zusammen
+                     else soli_freigrenze.einzel_euro)) | euro_ganz }} €
+          Einkommensteuer)</small>{% endif %}</td>
+        <td class="zahl mono">{{ e.mehr_soli_cent | euro_text }} €</td></tr>
+      {% if e.eingaben.kirchensteuer_prozent %}
+      <tr><td>Kirchensteuer {{ e.eingaben.kirchensteuer_prozent }} %</td>
+        <td class="zahl mono">{{ e.mehr_kist_cent | euro_text }} €</td></tr>
+      {% endif %}
+      <tr><td>Gewerbesteuer
+        {%- if e.gewst_cent %} <small>(Hebesatz {{ e.eingaben.hebesatz_prozent }} %)</small>
+        {%- else %} <small>(keine: Gewinn bis {{ gewst_freibetrag_cent | euro_ganz }} € frei)</small>{% endif %}</td>
+        <td class="zahl mono">{{ e.gewst_cent | euro_text }} €</td></tr>
+    </tbody>
+    <tfoot>
+      <tr><td>Steuer auf den Gewinn</td>
+        <td class="zahl mono">{{ e.mehrsteuer_berechnet_cent | euro_text }} €</td></tr>
+      {# Ohne Gewinn (leere EÜR, nichts erwartet) gibt es weder Steuer noch Erstattung --
+         "Voraussichtlich zurück" versprach sonst die Vorauszahlungen zurück. #}
+      {% if voraus_gesamt and not e.mit_eigenem_satz and e.gewinn_cent != 0 %}
+      {% set rest = e.mehrsteuer_berechnet_cent - voraus %}
+      {% set faellig = e.vz_noch_faellig_cent %}
+      {% if voraus %}
+      <tr class="unter"><td>Schon vorausgezahlt</td>
+        <td class="zahl mono">−{{ voraus | euro_text }} €</td></tr>
+      {% endif %}
+      {% if faellig %}
+      <tr class="unter"><td>Noch fällige Vorauszahlungen</td>
+        <td class="zahl mono">−{{ faellig | euro_text }} €</td></tr>
+      <tr><td>{% if rest - faellig >= 0 %}Voraussichtlich mit dem Bescheid{% else
+        %}Voraussichtlich zurück{% endif %}</td>
+        <td class="zahl mono">{{ ((rest - faellig) | abs) | euro_text }} €</td></tr>
+      {% else %}
+      <tr><td>{% if rest >= 0 %}Noch offen{% else %}Voraussichtlich zurück{% endif %}</td>
+        <td class="zahl mono">{{ (rest | abs) | euro_text }} €</td></tr>
+      {% endif %}
+      {% endif %}
+    </tfoot>
+  </table>
+  {% endif %}
+
+  {% for h in e.hinweise %}
+  <div class="meldung warn">{{ h }}</div>
+  {% endfor %}
+  {% endif %}
+</section>
+
+
+</div>
+
+{% if e %}
+<div class="nur-druck">
+  <h2>Angaben</h2>
+  <p>
+    {%- if e.zve_quelle == 'ZVE' %}Zu versteuerndes Einkommen ohne Gewerbe
+    {{ (e.zve_ohne_euro * 100) | euro_ganz }} €{% elif e.zve_quelle == 'KEINE' %}ohne Angabe
+    zum Gehalt{% else %}Bruttogehalt
+    {{ e.eingaben.brutto_lohn_cent | euro_ganz }} €{% if e.eingaben.zusammen %}, Partner/in
+    {{ (e.eingaben.partner_brutto_cent or 0) | euro_ganz }} €{% endif %}{% endif %} ·
+    {{ 'Zusammenveranlagung' if e.eingaben.zusammen else 'Einzelveranlagung' }} ·
+    Kirchensteuer {{ e.eingaben.kirchensteuer_prozent or 'keine' }}{% if e.eingaben.kirchensteuer_prozent %} %{% endif %} ·
+    Gewinn {{ e.gewinn_cent | euro_ganz }} € ({{ 'laut EÜR' if e.gewinn_aus_euer else 'erwartet' }}) ·
+    Hebesatz {{ e.eingaben.hebesatz_prozent }} %
+    {%- for t in e.termine %} · Vorauszahlung {{ empfaenger_text[t.empfaenger] }}
+    {{ t.faellig | datum_de }} {{ t.betrag_cent | euro_ganz }} € ({{ 'gezahlt' if t.gezahlt
+    else 'offen' }}){% endfor %}
+    {%- if e.eingaben.vorauszahlungen_cent %} · weitere Vorauszahlungen
+    {{ e.eingaben.vorauszahlungen_cent | euro_ganz }} €{% endif %}
+    {%- if e.mit_eigenem_satz %} · eigener Satz {{ satz(e.satz_manuell) }}{% endif %} ·
+    Stand {{ heute | datum_de }}</p>
+</div>
+
+{% if e.berechnet %}
+<h2>So wird gerechnet</h2>
+<p class="hinweis">Die Steuer auf dein Gehalt ist über die Lohnsteuer schon bezahlt. Offen ist
+  nur, was der Gewinn obendrauf kostet: die Steuer auf alles zusammen minus die Steuer ohne das
+  Gewerbe.</p>
+<table class="vergleich">
+  <thead><tr><th></th><th class="zahl">ohne Gewerbe</th><th class="zahl">mit Gewerbe</th>
+    <th class="zahl unterschied">Unterschied</th></tr></thead>
+  <tbody>
+    <tr><td>Zu versteuerndes Einkommen
+      <small>{% if e.zve_quelle == 'ZVE' %}(aus dem Steuerbescheid){% else %}(aus dem
+        Bruttogehalt geschätzt){% endif %}</small></td>
+      <td class="zahl mono">{{ (e.zve_ohne_gezeigt_euro * 100) | euro_ganz }} €</td>
+      <td class="zahl mono">{{ (e.zve_mit_euro * 100) | euro_ganz }} €</td>
+      <td class="zahl mono unterschied">{{ ((e.zve_mit_euro - e.zve_ohne_gezeigt_euro) * 100) | euro_ganz }} €</td></tr>
+    <tr><td>Einkommensteuer <small>({{ 'Splittingtarif' if e.eingaben.zusammen else
+      'Grundtarif' }} {{ e.tarif.aus_jahr or e.tarif.jahr }}{% if e.tarif.entwurf %},
+      Entwurf{% endif %})</small></td>
+      <td class="zahl mono">{{ e.est_ohne_cent | euro_ganz }} €</td>
+      <td class="zahl mono">{{ e.est_mit_cent | euro_ganz }} €</td>
+      <td class="zahl mono unterschied">{{ e.mehr_est_tariflich_cent | euro_ganz }} €</td></tr>
+    {% if e.anrechnung_35_cent %}
+    <tr><td>Anrechnung der Gewerbesteuer <small>(§ 35 EStG)</small></td>
+      <td class="zahl mono">—</td>
+      <td class="zahl mono">−{{ e.anrechnung_35_cent | euro_ganz }} €</td>
+      <td class="zahl mono unterschied">−{{ e.anrechnung_35_cent | euro_ganz }} €</td></tr>
+    {% endif %}
+    <tr><td>Solidaritätszuschlag</td>
+      <td class="zahl mono">{{ e.soli_ohne_cent | euro_ganz }} €</td>
+      <td class="zahl mono">{{ e.soli_mit_cent | euro_ganz }} €</td>
+      <td class="zahl mono unterschied">{{ e.mehr_soli_cent | euro_ganz }} €</td></tr>
+    {% if e.eingaben.kirchensteuer_prozent %}
+    <tr><td>Kirchensteuer {{ e.eingaben.kirchensteuer_prozent }} %</td>
+      <td class="zahl mono">{{ e.kist_ohne_cent | euro_ganz }} €</td>
+      <td class="zahl mono">{{ e.kist_mit_cent | euro_ganz }} €</td>
+      <td class="zahl mono unterschied">{{ e.mehr_kist_cent | euro_ganz }} €</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+<ul class="hinweis rechenweg">
+  <li>Gewinn {{ jahr }}: <strong>{{ e.gewinn_cent | euro_text }} €</strong>
+    {%- if e.gewinn_aus_euer %} laut EÜR{% if laufendes_jahr %} bis heute{% endif %}{% else
+    %} erwartet (laut EÜR bisher {{ e.gewinn_bisher_cent | euro_text }} €){% endif %}.</li>
+  {% if e.zve_quelle == 'BRUTTO' and e.lohn and not e.lohn.brutto_cent %}
+  <li>Ohne Gehalt geht vom Gewinn nur der Sonderausgaben-Pauschbetrag von
+    {{ e.lohn.sonderausgaben_cent | euro_ganz }} € ab. Deine eigenen Beiträge zur Kranken- und
+    Pflegeversicherung senken die Steuer ebenfalls, sind hier aber nicht berücksichtigt — die
+    Schätzung ist dann eher zu hoch.</li>
+  {% elif e.zve_quelle == 'BRUTTO' and e.lohn %}
+  <li>Vom Bruttogehalt {{ e.lohn.brutto_cent | euro_ganz }} € gehen ab:
+    Arbeitnehmer-Pauschbetrag {{ e.lohn.werbungskosten_cent | euro_ganz }} €,
+    Rentenversicherung {{ e.lohn.rentenversicherung_cent | euro_ganz }} €,
+    Kranken-, Pflege- und Arbeitslosenversicherung {{ e.lohn.sonstige_vorsorge_cent | euro_ganz }} €,
+    Sonderausgaben-Pauschbetrag {{ e.lohn.sonderausgaben_cent | euro_ganz }} €
+    {%- if e.zve_ohne_euro < 0 %} — zusammen mehr als das Gehalt; der Rest von
+    {{ (-e.zve_ohne_euro * 100) | euro_ganz }} € mindert den Gewinn{% endif %}. Eine Näherung
+    für gesetzlich versicherte Arbeitnehmer ohne Kinder und ohne höhere Werbungskosten; nicht
+    passend bei privater Krankenversicherung, für Beamte und bei Mini- oder Midijob. Mit dem zu
+    versteuernden Einkommen aus dem letzten Bescheid wird es genauer.</li>
+  {% elif e.lohn and e.lohn.brutto_cent %}
+  <li>Aus dem Bruttogehalt geschätzt wären es {{ ([e.lohn.zve_euro, 0] | max * 100) | euro_ganz }} € zu
+    versteuerndes Einkommen; gerechnet wird mit dem Wert aus dem Bescheid.</li>
+  {% endif %}
+  {% if e.haerteausgleich_cent %}
+  <li>Härteausgleich: neben einem Arbeitslohn bleiben Nebeneinkünfte bis
+    {{ veranlagung.haerteausgleich_voll_bis_euro }} € steuerfrei, bis
+    {{ veranlagung.haerteausgleich_gleitend_bis_euro }} € gleitend (§ 46 Abs. 3 EStG,
+    § 70 EStDV). Abgezogen: {{ e.haerteausgleich_cent | euro_text }} €.</li>
+  {% endif %}
+  {% if e.gewst_cent %}
+  <li>Gewerbesteuer: Gewinn auf volle 100 € abgerundet, minus {{ gewst_freibetrag_cent | euro_ganz }} €
+    Freibetrag, davon 3,5 % = Messbetrag {{ e.gewerbe.messbetrag_cent | euro_text }} €, mal
+    Hebesatz {{ e.eingaben.hebesatz_prozent }} %. Auf die Einkommensteuer angerechnet wird
+    höchstens das 4-Fache des Messbetrags (§ 35 EStG) — bis rund 400 % Hebesatz gleicht sich das
+    fast aus.</li>
+  {% endif %}
+  {% if e.eingaben.kirchensteuer_prozent and e.anrechnung_35_cent %}
+  <li>Die Kirchensteuer rechnet mit der Einkommensteuer vor der Anrechnung (§ 51a Abs. 2
+    EStG), der Soli mit der danach.</li>
+  {% endif %}
+  {% if e.eingaben.brutto_lohn_cent or e.eingaben.zve_ohne_cent %}
+  <li>Die Lohnsteuer liegt meist einige Euro unter der Jahressteuer auf das Gehalt; auch dieser
+    Rest kommt mit der Erklärung.</li>
+  {% endif %}
+</ul>
+{% endif %}
+{% endif %}
+
+<h2>Abstufungen der Einkommensteuer {{ tarif.aus_jahr or tarif.jahr }}{% if tarif.entwurf %}
+  <span class="gedaempft">(Entwurf)</span>{% endif %}</h2>
+{#- Auch ohne Ergebnis: die Ueberschrift nennt dann ein anderes Jahr als die Seite. #}
+{% if tarif.hinweis %}<p class="hinweis"><strong>{{ tarif.hinweis }}</strong></p>{% endif %}
+<p class="hinweis">Der Steuersatz steigt mit dem zu versteuernden Einkommen — aber jeder Satz gilt
+  nur für den Teil des Einkommens in seiner Stufe. Wer in die 42-%-Stufe rutscht, zahlt 42 % auf
+  die Euro darüber, nicht auf alles.{% if zusammen %} Bei Zusammenveranlagung gelten die Grenzen
+  doppelt (Splitting).{% endif %}</p>
+<table class="stufen">
+  <thead><tr><th>Zu versteuerndes Einkommen</th><th class="zahl">Steuersatz</th></tr></thead>
+  <tbody>
+  {% for s in stufen %}
+    <tr {% if e and (loop.index0 == e.zone_ohne or loop.index0 == e.zone_mit) %}class="markiert"{% endif %}>
+      <td><span class="mono">{% if s.bis_euro is none %}ab {{ (s.von_euro * 100) | euro_ganz }} €
+        {%- elif loop.first %}bis {{ (s.bis_euro * 100) | euro_ganz }} €
+        {%- else %}{{ (s.von_euro * 100) | euro_ganz }} – {{ (s.bis_euro * 100) | euro_ganz }} €{% endif %}</span>
+        <small class="stufenname">{{ s.name }} · {{ s.erklaerung }}</small>
+        {%- if e and loop.index0 == e.zone_ohne %} <span class="chip">ohne Gewerbe</span>{% endif %}
+        {%- if e and loop.index0 == e.zone_mit %} <span class="chip bezahlt">mit Gewerbe</span>{% endif %}</td>
+      <td class="zahl mono">{% if s.gleichbleibend %}{{ s.satz_von | prozent(0) }} %
+        {%- else %}{{ s.satz_von | prozent(0) }} → {{ s.satz_bis | prozent(0) }} %{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hinweis">Dazu der Solidaritätszuschlag (5,5 %), aber erst, wenn die Einkommensteuer über
+  der Freigrenze liegt — darunter zahlen ihn die meisten nicht mehr. Quelle: {{ tarif.quelle }}.</p>
+
+<h2>Was die Schätzung nicht weiß</h2>
+<div class="meldung">
+  <p><strong>Eine Schätzung, keine Steuerberatung.</strong> Sie rechnet mit dem Tarif, dem Gewinn
+    laut EÜR und deinen Angaben. Nicht berücksichtigt:</p>
+  <ul>
+    <li>andere Einkünfte, etwa aus Kapitalvermögen oder Vermietung;</li>
+    <li>Sonderausgaben über die Pauschalen hinaus (Spenden, private Altersvorsorge), höhere
+      Werbungskosten und außergewöhnliche Belastungen — sie senken die Steuer eher;</li>
+    <li>Kinderfreibeträge;</li>
+    <li>Steuerklasse III/V oder IV mit Faktor: dann wird auf das Gehalt oft zu wenig Lohnsteuer
+      einbehalten, und die Nachzahlung kann <strong>höher</strong> sein als hier;</li>
+    <li>die Kappung der Kirchensteuer;</li>
+    <li>Gewerbesteuer zahlen nur Gewerbebetriebe — eine freiberufliche Tätigkeit (§ 18 EStG)
+      nicht.</li>
+  </ul>
+  <p>Umsatzsteuer fällt keine an: du bist Kleinunternehmer nach § 19 UStG.</p>
+</div>
+
+<h2>Vorauszahlungen</h2>
+<p class="hinweis">Nach der ersten Steuererklärung mit Gewinn kann das Finanzamt vierteljährliche
+  Vorauszahlungen festsetzen — fällig am 10. März, 10. Juni, 10. September und 10. Dezember
+  (§ 37 EStG), sobald sie mindestens {{ veranlagung.vorauszahlung_est_mindestens_jahr_euro }} € im
+  Jahr ausmachen{% if e and e.vorauszahlungen_wahrscheinlich %} — bei dieser Schätzung ist das
+  wahrscheinlich{% endif %}. Im ersten Jahr kommt das oft zusammen: die Nachzahlung für das
+  Vorjahr und die ersten Vorauszahlungen für das laufende Jahr. Die Nachzahlung ist einen Monat
+  nach dem Bescheid fällig. Gewerbesteuer-Vorauszahlungen setzt die Gemeinde fest (15. Februar,
+  Mai, August, November). Fällt ein Termin auf ein Wochenende oder einen Feiertag, ist die Rate
+  am nächsten Werktag fällig (§ 108 Abs. 3 AO).
+  {%- if e and e.vorauszahlungen_wahrscheinlich and not e.termine %} Falls schon welche
+  festgesetzt sind: oben unter „Vorauszahlungen laut Bescheid“ eintragen.{% endif %}
+  {%- if e and e.pflichtveranlagung %} Bei mehr als {{ veranlagung.pflicht_ueber_euro }} € Gewinn
+  neben dem Gehalt ist die Steuererklärung Pflicht (§ 46 Abs. 2 Nr. 1 EStG).{% endif %}</p>
+<p class="hinweis">Ein Vorauszahlungsbescheid gilt fort, bis ein neuer kommt — die Beträge stehen
+  deshalb meist auch für das Folgejahr fest („Beträge aus dem Vorjahr übernehmen“). Weicht der
+  Gewinn deutlich ab, lassen sich die Vorauszahlungen anpassen: herabsetzen auf Antrag, formlos
+  mit einer Gewinnprognose (§ 37 Abs. 3 EStG; Gewerbesteuer § 19 Abs. 3 GewStG). Sind sie zu
+  niedrig, kommt die Differenz mit dem Bescheid — und ab dem 15. Monat nach Jahresende mit
+  Zinsen (§ 233a AO).</p>
+
+<script>
+/* Zwei Komfortknoepfe: "Berechneten Satz übernehmen" und "Als erwarteten
+   Jahresgewinn eintragen" fuellen nur das Feld -- gespeichert wird erst mit
+   "Berechnen und speichern". Ohne Skript bleiben sie verborgen (hidden), die
+   Zahl steht daneben im Text. Das Partnerfeld zeigt sich nur bei
+   Zusammenveranlagung; ohne Skript steht es immer da, mit Hinweis. */
+(function () {
+  /* "Beträge aus dem Vorjahr übernehmen": füllt die Raten, speichert nichts. */
+  document.querySelectorAll('button[data-vorjahr]').forEach(function (knopf) {
+    knopf.hidden = false;
+    knopf.addEventListener('click', function () {
+      var werte = JSON.parse(knopf.dataset.vorjahr);
+      Object.keys(werte).forEach(function (name) {
+        var feld = document.querySelector('input[name="' + name + '"]');
+        if (feld) feld.value = werte[name];
+      });
+      var gemeinde = document.querySelector('details.raten-gemeinde');
+      if (gemeinde && Object.keys(werte).some(function (n) {
+        return n.indexOf('vz_gemeinde') === 0;
+      })) gemeinde.open = true;
+    });
+  });
+  document.querySelectorAll('button[data-fuellen]').forEach(function (knopf) {
+    knopf.hidden = false;
+    knopf.addEventListener('click', function () {
+      var feld = document.querySelector('input[name="' + knopf.dataset.fuellen + '"]');
+      if (!feld) return;
+      feld.value = knopf.dataset.wert;
+      feld.focus();
+    });
+  });
+  var partner = document.querySelector('.nur-zusammen');
+  function zeigen() {
+    var gewaehlt = document.querySelector('input[name="veranlagung"]:checked');
+    /* Ein abgewiesenes Partnerfeld bleibt sichtbar, auch bei "einzeln". */
+    if (partner) partner.hidden = !(gewaehlt && gewaehlt.value === 'ZUSAMMEN')
+      && !partner.querySelector('[aria-invalid]');
+  }
+  document.querySelectorAll('input[name="veranlagung"]').forEach(function (r) {
+    r.addEventListener('change', zeigen);
+  });
+  zeigen();
+})();
+</script>
+{% endblock %}

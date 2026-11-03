@@ -1,0 +1,141 @@
+{% extends "basis.html" %}
+{% set aktiv = 'euer' %}
+{% block titel %}EÜR {{ jahr }} · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Einnahmenüberschussrechnung {{ jahr }}</h1>
+
+<form method="get" action="/euer" class="inline">
+  <label>Jahr
+    <select name="jahr" onchange="this.form.submit()">
+      {% for j in jahre %}
+      <option value="{{ j }}" {% if j == jahr %}selected{% endif %}>{{ j }}</option>
+      {% endfor %}
+      {% if jahr not in jahre %}<option value="{{ jahr }}" selected>{{ jahr }}</option>{% endif %}
+    </select></label>
+  <noscript><button type="submit">Anzeigen</button></noscript>
+</form>
+
+{% if luecke.anzahl %}
+<div class="meldung warn">
+  <strong>{% if luecke.anzahl == 1 %}1 bezahlter Beleg{% else %}{{ luecke.anzahl }} bezahlte
+    Belege{% endif %} ohne Kategorie — {{ luecke.betrag_cent | euro }} € fehlen unten.</strong>
+  Ohne Kategorie gibt es keine EÜR-Kennzahl und damit keine Zeile. Die Ausgaben sind
+  erfasst, zählen aber nicht mit, und der Gewinn fällt um genau diesen Betrag zu hoch
+  aus. <a href="/belege?offen=1">Belege zuordnen</a>.
+</div>
+{% endif %}
+
+{% if luecke.eigenbelege_offen %}
+<div class="meldung warn">
+  <strong>{% if luecke.eigenbelege_offen == 1 %}1 Eigenbeleg ohne Zahlungsdatum{% else
+    %}{{ luecke.eigenbelege_offen }} Eigenbelege ohne Zahlungsdatum{% endif %} —
+    {{ luecke.eigenbelege_offen_cent | euro }} € fehlen unten.</strong>
+  Ein Eigenbeleg ohne „Bezahlt am“ ist nach § 11 Abs. 2 EStG noch keine Betriebsausgabe —
+  und anders als beim Fremdbeleg erinnert kein Kontoauszug daran. Das Geld ist meist
+  längst weg: in der <a href="/belege">Belegliste</a> unter „Ändern“ die Zahlung erfassen.
+</div>
+{% endif %}
+
+{% if unbestaetigt.anzahl %}
+<div class="meldung warn">
+  <strong>{% if unbestaetigt.anzahl == 1 %}1 bezahlter, automatisch gebuchter Beleg{% else
+    %}{{ unbestaetigt.anzahl }} bezahlte, automatisch gebuchte Belege{% endif %} noch nicht
+    mit „Stimmt so“ bestätigt — {{ unbestaetigt.betrag_cent | euro }} € zählen schon in der
+    EÜR.</strong>
+  Die Werte hat das Tool selbst ausgelesen; bitte am Beleg prüfen.
+  <a href="/belege?offen=1">Zu den ungeklärten Belegen</a>
+</div>
+{% endif %}
+
+{% for name, cent in afa_fehlt %}
+<div class="meldung warn">
+  <strong>AfA für {{ name }} fehlt (WISO: {{ cent | euro }} €).</strong> Das Gut kommt aus dem
+  WISO-Import, angeschafft vor {{ jahr }}; ohne Anschaffungstag und -kosten rechnet das Tool
+  keine Abschreibung. <a href="/anlagen#angaben">Angaben ausfüllen</a>
+</div>
+{% endfor %}
+
+{% if anlage_offen.anzahl %}
+<div class="meldung warn">
+  <strong>{% if anlage_offen.anzahl == 1 %}1 Beleg ist{% else %}{{ anlage_offen.anzahl }}
+    Belege sind{% endif %} als Anlagegut markiert, aber noch nicht im Verzeichnis —
+    {{ anlage_offen.betrag_cent | euro }} € fehlen in der Abschreibung.</strong>
+  Ein Beleg mit dem Haken „Anlagegut“ zählt nicht als Ausgabe, sondern über die
+  Abschreibung — und die gibt es erst mit dem Eintrag im
+  <a href="/anlagen">Anlagenverzeichnis</a>. Dort steht er zum Übernehmen bereit.
+</div>
+{% endif %}
+
+{% if auswertung.anlagekategorie_ohne_gut %}
+<div class="meldung warn">
+  <strong>{% if auswertung.anlagekategorie_ohne_gut.anzahl == 1 %}1 bezahlter Beleg in der
+    Anlagekategorie ist nicht als Anlagegut erfasst — er steht mit vollem Betrag in KZ 130.
+    {%- else %}{{ auswertung.anlagekategorie_ohne_gut.anzahl }} bezahlte Belege in der
+    Anlagekategorie sind nicht als Anlagegut erfasst — sie stehen mit vollem Betrag in
+    KZ 130.{% endif %}</strong>
+  Über 800 € netto gibt es keinen Sofortabzug: das Gut gehört ins
+  <a href="/anlagen">Anlagenverzeichnis</a> und wird über die Nutzungsdauer abgeschrieben.
+  Die Summe unten ist um {{ auswertung.anlagekategorie_ohne_gut.betrag_cent | euro }} €
+  zu hoch, solange das so steht.
+</div>
+{% endif %}
+
+<p class="hinweis">Gezählt wird der <strong>Tag, an dem das Geld fließt</strong>
+  (§ 11 EStG), nicht das Rechnungs- oder Belegdatum. Eine im Dezember gestellte und
+  im Januar bezahlte Rechnung gehört ins Folgejahr.</p>
+
+{% if not auswertung.einnahmen and not auswertung.ausgaben %}
+<div class="meldung">Für {{ jahr }} ist noch keine Zahlung erfasst. Die EÜR rechnet
+  mit Zahlungen, nicht mit Rechnungen — festgeschriebene Rechnungen ohne
+  Zahlungseingang erscheinen hier also noch nicht.</div>
+{% else %}
+
+<h2>Betriebseinnahmen</h2>
+<table>
+  <thead><tr><th class="zahl">Kennzahl</th><th>Bezeichnung</th><th class="zahl">Betrag</th></tr></thead>
+  <tbody>
+  {% for z in auswertung.einnahmen %}
+    <tr {% if z.nachrichtlich %}class="gedaempft"{% endif %}>
+      <td class="zahl mono">{{ z.kennzahl }}</td>
+      <td>{{ z.bezeichnung }}{% if z.nachrichtlich %}
+        <small> — nachrichtlich, schon oben enthalten</small>{% endif %}</td>
+      <td class="zahl mono">{{ z.betrag_cent | euro }} €</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr class="summe"><td></td><td>Summe</td>
+    <td class="zahl mono">{{ auswertung.einnahmen_cent | euro }} €</td></tr></tfoot>
+</table>
+
+<h2>Betriebsausgaben</h2>
+{% if auswertung.ausgaben %}
+<table>
+  <thead><tr><th class="zahl">Kennzahl</th><th>Bezeichnung</th><th class="zahl">Betrag</th></tr></thead>
+  <tbody>
+  {% for z in auswertung.ausgaben %}
+    <tr {% if z.nachrichtlich %}class="gedaempft"{% endif %}>
+      <td class="zahl mono">{{ z.kennzahl }}</td>
+      <td>{{ z.bezeichnung }}{% if z.nachrichtlich %}
+        <small> — nachrichtlich, zählt nicht in die Summe</small>{% endif %}</td>
+      <td class="zahl mono">{{ z.betrag_cent | euro }} €</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr class="summe"><td></td><td>Summe</td>
+    <td class="zahl mono">{{ auswertung.ausgaben_cent | euro }} €</td></tr></tfoot>
+</table>
+{% else %}
+<p class="hinweis">Keine bezahlten Belege in {{ jahr }}. Ein Beleg ohne Zahlungsdatum
+  ist noch keine Betriebsausgabe (§ 11 Abs. 2 EStG).</p>
+{% endif %}
+
+<h2>Gewinn</h2>
+<p class="gross mono">{{ auswertung.gewinn_cent | euro }} €</p>
+<p class="hinweis">Einnahmen minus Ausgaben. Nachrichtliche Zeilen zählen nicht mit —
+  sie stehen schon in der Summe darüber.</p>
+{% endif %}
+
+<p class="hinweis">Dieselben Zahlen stehen im
+  <a href="/backup/excel">Excel-Export</a> auf den Blättern „EÜR" und „Buchungen",
+  dort über alle Jahre und mit einer Zeile je Geldfluss.</p>
+{% endblock %}

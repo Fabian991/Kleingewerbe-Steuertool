@@ -1,0 +1,179 @@
+{% extends "basis.html" %}
+{% set aktiv = 'einrichtung' %}
+{% block titel %}Einrichtung · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>{% if eingerichtet %}Einstellungen{% else %}Einrichtung{% endif %}</h1>
+<p class="hinweis">Diese Angaben stehen auf jeder Rechnung. Ohne sie lässt sich keine
+  Rechnung festschreiben.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+
+<form method="post" action="/einrichtung">
+  <fieldset>
+    <legend>Betrieb</legend>
+    <div class="felder">
+      {# Hoechstlaengen: der Name steht gross im Briefkopf und klein in der
+         Ruecksendeangabe; ein langer wird dort kleiner gesetzt
+         (rechnungsdruck.namensgroesse), aber unbegrenzt passte er nicht. #}
+      <label>Firmenname <small>wie er auf der Rechnung steht; höchstens 150 Zeichen</small>
+        <input name="name" required maxlength="150"
+               value="{{ betrieb.name if betrieb else '' }}"></label>
+      <label>Inhaber <small>optional; Vor- und Nachname. Steht im Briefkopf und als
+          Kontoinhaber unter der IBAN — so, wie die Bank das Konto führt</small>
+        <input name="inhaber" maxlength="80"
+               value="{{ betrieb.inhaber or '' if betrieb else '' }}"></label>
+      <label>Straße und Hausnummer
+        <input name="strasse" required value="{{ betrieb.strasse if betrieb else '' }}"></label>
+      <label>PLZ <small>fünf Ziffern</small>
+        <input name="plz" required inputmode="numeric" pattern="[0-9]{5}" maxlength="5"
+               title="Die PLZ des Betriebs hat genau fünf Ziffern"
+               value="{{ betrieb.plz if betrieb else '' }}"></label>
+      <label>Ort
+        <input name="ort" required value="{{ betrieb.ort if betrieb else '' }}"></label>
+      <label>Telefon <small>steht im Briefkopf</small>
+        <input name="telefon" value="{{ betrieb.telefon or '' if betrieb else '' }}"></label>
+      <label>E-Mail <small>steht im Briefkopf</small>
+        <input name="email" type="email" value="{{ betrieb.email or '' if betrieb else '' }}"></label>
+      <label>Beginn der Tätigkeit <small>Tag der Gewerbeanmeldung. Im Gründungsjahr gilt
+          die 25.000-€-Grenze statt 100.000 € (§ 19 Abs. 1 UStG) — ohne Datum rechnet
+          die Anzeige mit 100.000 € und sagt das dazu</small>
+        <input name="beginn_am" type="date"
+               value="{{ betrieb.beginn_am or '' if betrieb else '' }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Steuerliche Kennung — mindestens eine ist Pflicht (§ 34a Satz 1 Nr. 2 UStDV)</legend>
+    {# Die Regel steht in app/logik/rechnungsdruck.py (VORRANG). #}
+    <p class="hinweis">Eine genügt, und gedruckt wird genau eine: die USt-IdNr. vor der
+      Kleinunternehmer-IdNr. vor der Steuernummer. Mit USt-IdNr. bleibt die Steuernummer
+      also von der Rechnung fern. Die USt-IdNr. gibt es kostenlos beim Bundeszentralamt für
+      Steuern (§ 27a UStG); sie ändert nichts am Kleinunternehmerstatus.</p>
+    <div class="felder">
+      <label>Steuernummer
+        <input name="steuernummer" placeholder="12/345/67890"
+               value="{{ betrieb.steuernummer or '' if betrieb else '' }}"></label>
+      <label>Umsatzsteuer-IdNr. <small>optional</small>
+        <input name="ust_idnr" placeholder="DE123456789"
+               value="{{ betrieb.ust_idnr or '' if betrieb else '' }}"></label>
+      <label>Kleinunternehmer-IdNr. <small>optional</small>
+        <input name="kleinunternehmer_idnr"
+               value="{{ betrieb.kleinunternehmer_idnr or '' if betrieb else '' }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Bankverbindung</legend>
+    <div class="felder">
+      {# Gespeichert ist die kompakte IBAN; gezeigt wird sie in Vierergruppen.
+         Nach einer abgewiesenen Eingabe steht dagegen genau das Getippte da. #}
+      <label>IBAN <small>steht auf jeder Rechnung; wird beim Speichern geprüft</small>
+        <input name="iban" placeholder="DE02 1203 0000 0000 2020 51" autocomplete="off"
+               value="{{ '' if not betrieb else (betrieb.iban or '' if fehler else betrieb.iban | iban) }}"></label>
+      <label>BIC <small>8 oder 11 Zeichen, optional</small>
+        <input name="bic" placeholder="BYLADEM1001" autocomplete="off"
+               value="{{ betrieb.bic or '' if betrieb else '' }}"></label>
+      <label>Bank <small>Name des Instituts, optional; steht unter der IBAN</small>
+        <input name="institut" placeholder="Musterbank"
+               value="{{ betrieb.institut or '' if betrieb else '' }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Abrechnung</legend>
+    <div class="felder">
+      <label>Standard-Stundensatz in Euro <small>1.234,56 oder 85</small>
+        <input name="standardsatz_euro" inputmode="decimal"
+               value="{{ standardsatz_euro }}"></label>
+      <label>Zahlungsziel in Tagen <small>0 bis 365</small>
+        <input name="zahlungsziel_tage" type="number" min="0" max="365"
+               value="{{ betrieb.zahlungsziel_tage if betrieb else 14 }}"></label>
+      <label>Fälligkeitsabsatz auf Rechnungen
+        <small>keine Pflichtangabe</small>
+        <select name="zahlungsziel_zeigen">
+          <option value="1" {% if not betrieb or betrieb.zahlungsziel_zeigen %}selected{% endif %}>
+            Zahlungsziel und Fälligkeitsdatum nennen</option>
+          <option value="0" {% if betrieb and not betrieb.zahlungsziel_zeigen %}selected{% endif %}>
+            weglassen</option>
+        </select></label>
+      <label>Leistungszeitraum auf Rechnungen
+        <small>keine Pflichtangabe (§ 34a UStDV)</small>
+        <select name="leistungszeitraum_default">
+          <option value="1" {% if not betrieb or betrieb.leistungszeitraum_default %}selected{% endif %}>
+            ausweisen</option>
+          <option value="0" {% if betrieb and not betrieb.leistungszeitraum_default %}selected{% endif %}>
+            weglassen</option>
+        </select></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Zeitrundung</legend>
+    <p class="hinweis">Vorbelegt sind <strong>angefangene 15 Minuten</strong>.
+      Gerundet wird auf die <strong>Summe je Rechnungsposition</strong>, nie je
+      Zeiteintrag: drei Einträge à 7 Minuten sind 21 Minuten → 0,50 h; je Eintrag
+      gerundet wären es 0,75 h.</p>
+    <p class="hinweis">Eine Rundungsregel braucht eine vertragliche Grundlage — steht
+      sie nicht im Angebot oder in den AGB, ist sie angreifbar. Sie steht deshalb
+      sichtbar auf jeder Rechnung, die rundet. Diese Regel ist die Vorgabe; am Kunden
+      lässt sich eine eigene einstellen (samt Vermerk, wo sie vereinbart ist).</p>
+    <div class="felder">
+      <label>Regel
+        <select name="rundung_modus">
+          {% for wert, text in [('KEINE', 'nicht runden'),
+                                ('AUFWAERTS', 'aufwärts, angefangene Einheit'),
+                                ('KAUFMAENNISCH', 'kaufmännisch'),
+                                ('ABWAERTS', 'abwärts')] %}
+            <option value="{{ wert }}"
+              {% if (betrieb.rundung_modus if betrieb else 'AUFWAERTS') == wert %}selected{% endif %}>
+              {{ text }}</option>
+          {% endfor %}
+        </select></label>
+      <label>Takt in Minuten <small>wird je Rechnungsposition angewandt, nie je Eintrag</small>
+        <input name="rundung_intervall_min" type="number" min="1" max="60"
+               value="{{ betrieb.rundung_intervall_min if betrieb else 15 }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Nummernkreise</legend>
+    <p class="hinweis">Beim Umstieg entscheidend: eine Nummer darf nicht zweimal
+      vergeben werden. Sie steht auf den bisherigen Rechnungen, und zwei Belege mit
+      derselben Nummer sind in einer Prüfung nicht auseinanderzuhalten.</p>
+    <div class="felder">
+      <label>Rechnungsformat <small>{JJJJ} Jahr, {MM} Monat, {NNNN} Zähler</small>
+        <input name="nummer_format"
+               value="{{ nummer_format or 'RE-{JJJJ}-{NNNN}' }}"></label>
+      <label>Nächste Rechnungsnummer
+        <small>Stand des laufenden Jahres: die erste noch freie — bisher höchste plus
+          eins. Leer oder so stehen lassen heißt: unverändert. Wer im neuen Jahr von
+          „durchlaufen“ auf „jedes Jahr neu“ wechselt, beginnt dann bei 1</small>
+        <input name="start_seq" type="number" min="1" max="999999999"
+               value="{{ start_seq if start_seq is not none else 1 }}"></label>
+      <input type="hidden" name="start_seq_angezeigt"
+             value="{{ start_seq_angezeigt if start_seq_angezeigt is defined and start_seq_angezeigt is not none else '' }}">
+      <label>Zähler zum Jahreswechsel
+        <small>ohne {JJJJ} oder {JJ} im Format muss er durchlaufen, sonst gibt es
+          jedes Jahr dieselben Nummern noch einmal</small>
+        <select name="reset_jaehrlich">
+          <option value="1" {% if reset_jaehrlich is not defined or reset_jaehrlich %}selected{% endif %}>
+            jedes Jahr neu bei 1</option>
+          <option value="0" {% if reset_jaehrlich is defined and not reset_jaehrlich %}selected{% endif %}>
+            durchlaufen lassen</option>
+        </select></label>
+      <label>Format der Kundennummer
+        <small>{:04d} ergibt 0001, {:02d} ergibt 01, K-{:04d} ergibt K-0001 —
+          die Nummer steht auf den bisherigen Rechnungen</small>
+        <input name="kundennummer_format"
+               value="{{ (betrieb.kundennummer_format if betrieb else none) or 'K-{:04d}' }}"></label>
+      <label>Erste neue Kundennummer
+        <small>bei 15 Altkunden also 16; bestehende Nummern lassen sich beim Anlegen
+          auch einzeln eintragen</small>
+        <input name="kundennummer_start" type="number" min="1" max="999999999"
+               value="{{ betrieb.kundennummer_start if betrieb else 1 }}"></label>
+    </div>
+  </fieldset>
+
+  <button type="submit">Speichern</button>
+</form>
+{% endblock %}

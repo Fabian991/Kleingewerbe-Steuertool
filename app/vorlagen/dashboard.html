@@ -1,0 +1,389 @@
+{% extends "basis.html" %}
+{% set aktiv = 'start' %}
+{# "1 Tag", "2 Tage" -- die feste Mehrzahl stand dreimal auf dieser Seite. #}
+{% macro tage(n) %}{{ n }} Tag{% if n != 1 %}e{% endif %}{% endmacro %}
+{% block titel %}Start · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>{{ betrieb.name }}</h1>
+<p class="hinweis">Kleinunternehmer nach § 19 Abs. 1 UStG · nächste Rechnungsnummer
+  <code>{{ naechste_nummer }}</code></p>
+
+{# Ergebnis einer Schnellaktion aus "Offene Rechnungen" (Rechnungsablauf). #}
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if hinweis %}<div class="meldung erfolg">{{ hinweis }}</div>{% endif %}
+
+{% if grenze.ueberschritten %}
+<div class="meldung fehler">
+  <strong>Die Grenze von {{ grenze.grenze_cent | euro }} € ist überschritten.</strong>
+  {% if grenze.gruendungsjahr %}
+    Im Jahr der Betriebseröffnung gilt die 25.000-€-Grenze für das laufende Jahr, nicht die
+    100.000-€-Grenze.
+  {% else %}
+    Bereits der Umsatz, mit dem die Grenze gerissen wird, ist nicht mehr nach § 19 Abs. 1 UStG
+    steuerfrei und unterliegt in voller Höhe der Regelbesteuerung — ein Übergangsjahr gibt es
+    seit 2025 nicht mehr.
+  {% endif %}
+  Vor der nächsten Rechnung steuerlich klären.
+</div>
+{% elif grenze.stufe in ('gelb', 'orange') %}
+<div class="meldung warn">
+  <strong>{{ grenze.rest_cent | euro }} € bis zur Grenze von
+    {{ grenze.grenze_cent | euro }} €.</strong>
+  {% if grenze.gruendungsjahr %}
+    Im Gründungsjahr zählt die 25.000-€-Grenze.
+  {% else %}
+    Wird sie gerissen, ist schon der auslösende Umsatz steuerpflichtig.
+  {% endif %}
+</div>
+{% endif %}
+
+{% if not grenze.beginn_bekannt %}
+<div class="meldung warn">
+  <strong>Der Beginn der Tätigkeit ist nicht eingetragen.</strong>
+  Im Jahr der Betriebseröffnung gilt die 25.000-€-Grenze statt 100.000 €
+  (§ 19 Abs. 1 UStG). Solange das Datum fehlt, rechnet diese Anzeige mit 100.000 € —
+  für einen Betrieb, der schon länger läuft, ist das richtig; für einen neuen nicht.
+  <a href="/einrichtung">In der Einrichtung nachtragen.</a>
+</div>
+{% endif %}
+
+{% if fristen %}
+{% set abgelaufen = fristen | selectattr('ueberschritten') | list %}
+<div class="meldung {% if abgelaufen %}fehler{% else %}warn{% endif %}">
+  <strong>{% if abgelaufen %}Die Rechnungsfrist ist
+    {% if abgelaufen | length == 1 %}bei einem Kunden{% else %}bei
+    {{ abgelaufen | length }} Kunden{% endif %} abgelaufen.{% else %}Die Rechnungsfrist
+    läuft.{% endif %}</strong>
+  Zwei Fristen, sehr unterschiedlich lang: ins <strong>Inland</strong>
+  {{ frist_monate }} Monate nach der Leistung (§ 14 Abs. 2 Satz 2 UStG), ins
+  <strong>EU-Ausland</strong> an einen Unternehmer nur bis zum
+  {{ eu_frist_tag }}. des Folgemonats (§ 14a Abs. 1 Satz 2 UStG). Beides gilt für
+  Kleinunternehmer unverändert.
+  <table>
+    <thead><tr><th>Kunde</th><th>Ältester Eintrag</th><th class="zahl">Stunden</th>
+      <th>Frist</th><th></th></tr></thead>
+    <tbody>
+    {% for f in fristen %}
+      <tr>
+        <td>{{ f.kunde }}</td>
+        <td>{{ f.aeltestes | datum_de }}</td>
+        <td class="zahl">{{ f.minuten | dezimalstunden }}</td>
+        <td>{{ f.frist_am | datum_de }}
+          {%- if f.ist_eu %} <span class="chip">EU, {{ eu_frist_tag }}. des Folgemonats</span>{% endif %}
+          {%- if f.ueberschritten %}
+            <span class="chip ueberfaellig">{{ tage(-f.tage_rest) }} über</span>
+          {%- else %}
+            <span class="chip gestellt">{{ tage(f.tage_rest) }}</span>
+          {%- endif %}</td>
+        {#- Liegt der aelteste Eintrag in einem Entwurf, fuehrt der Weg dorthin:
+            im Assistenten ist er nicht mehr waehlbar ("keine Zeiten offen"). #}
+        <td>{% if f.entwurf_id %}<a href="/rechnung/{{ f.entwurf_id }}">Entwurf öffnen</a>
+          {%- else %}<a href="/rechnung/neu?kunde={{ f.kunde_id }}">Rechnung erstellen</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if grenze.vorjahr_ueberschritten %}
+<div class="meldung fehler">
+  <strong>Der Vorjahresumsatz lag über 25.000 €.</strong>
+  Damit gilt seit dem 1. Januar die Regelbesteuerung — auch dann, wenn der Umsatz in diesem Jahr
+  wieder darunter liegt. Dieses Werkzeug stellt weiterhin Rechnungen ohne Umsatzsteuer aus; das
+  ist dann falsch. Bitte steuerlich klären, bevor die nächste Rechnung rausgeht.
+</div>
+{% endif %}
+
+{# Das Abholen aus dem Eingangsordner laeuft beim Start im Hintergrund. Die
+   Uebersicht ist die erste Seite danach: hier steht, was es getan hat. Laeuft
+   es noch, laedt sich die Seite nach drei Sekunden neu -- sie hat kein
+   Formular, das dabei verloren ginge. #}
+{% set abgeholt = belegordner_ergebnis %}
+{% if belegordner and belegordner.laeuft %}
+<div class="meldung laufend nicht-drucken">
+  <strong>Der Eingangsordner wird gerade abgeholt …</strong>
+  <a href="/belege#eingangsordner">Zu den Belegen</a>
+</div>
+<script>setTimeout(function () { location.reload(); }, 3000);</script>
+{% elif abgeholt and not abgeholt.leer() %}
+<div class="meldung {% if abgeholt.fehler and not abgeholt.veraendert() %}fehler
+  {%- elif abgeholt.wartend or abgeholt.abgewiesen or abgeholt.fehler %}warn
+  {%- else %}erfolg{% endif %} nicht-drucken">
+  {{ abgeholt.zusammenfassung() }}
+  <a href="/belege#eingangsordner">Zu den Belegen</a>
+</div>
+{% endif %}
+
+{# Ordner je Jahr: ab Dezember (und im neuen Jahr, solange er fehlt) der
+   Hinweis auf den Ordner des Jahres -- angelegt wird er nur per Klick. #}
+{% if jahreswechsel_ordner %}{% set jw = jahreswechsel_ordner %}
+<div class="meldung warn nicht-drucken">
+  <strong>Für {{ jw.jahr }} ist noch kein Eingangsordner hinterlegt.</strong>
+  {%- if jw.vorschlag %} {% if jw.gefunden %}Gefunden{% else %}Vorschlag{% endif %}:
+  {{ jw.anzeige }}.
+  <form method="post" action="/belege/ordner" class="inline">
+    <input type="hidden" name="jahr" value="{{ jw.jahr }}">
+    <input type="hidden" name="vorschlag" value="1">
+    <button type="submit" class="leise">{% if jw.gefunden %}Übernehmen{% else %}Anlegen und
+      übernehmen{% endif %}</button></form>{% endif %}
+  <a href="/belege#eingangsordner">Zu den Eingangsordnern</a>
+</div>
+{% endif %}
+
+<div class="karten">
+  {# Alle Betriebseinnahmen nach Zufluss, wie auf der EÜR-Seite -- die
+     Karte daneben zeigt nur den Teil, der zur § 19-Grenze zählt. #}
+  <div class="karte">
+    <div class="label">Betriebseinnahmen {{ jahr }}</div>
+    <div class="wert">{{ einnahmen.gesamt_cent | euro }} €</div>
+    <div class="label">
+      Rechnungen {{ einnahmen.rechnungen_cent | euro }} €
+      {%- if einnahmen.ohne_rechnung_cent %} · ohne eigene Rechnung
+        {{ einnahmen.ohne_rechnung_cent | euro }} €{% endif %}
+      {%- if einnahmen.anlagenverkauf_cent %} · Anlagenverkauf
+        {{ einnahmen.anlagenverkauf_cent | euro }} €{% endif %}
+    </div>
+    <div class="label">
+      {%- if einnahmen.nicht_steuerbar_cent %}davon {{ einnahmen.nicht_steuerbar_cent | euro }} €
+        nicht im § 19-Umsatz · {% endif %}<a href="/euer">zur EÜR</a>
+    </div>
+  </div>
+  <div class="karte">
+    <div class="label">Davon Inland {{ jahr }} — § 19-Grenze</div>
+    <div class="wert">{{ grenze.vereinnahmt_cent | euro }} €</div>
+    <div class="label">
+      von {{ grenze.grenze_cent | euro }} €
+      {%- if grenze.gruendungsjahr %} (Gründungsjahr){% endif %}
+    </div>
+    <div class="balken" role="img"
+         aria-label="{{ grenze.balken_prozent | round | int }} Prozent der Grenze">
+      <span class="{{ grenze.stufe }}"
+            style="width: {{ grenze.balken_prozent }}%"></span>
+    </div>
+    {%- if grenze.negativ %}
+    <div class="label">Rückzahlungen übersteigen die Einnahmen dieses Jahres</div>
+    {%- endif %}
+    <div class="label">
+      Vorjahr {{ grenze.vorjahr_cent | euro }} €
+      {%- if not grenze.vorjahr_erfasst %} · im Tool nicht erfasst{% endif %}
+    </div>
+  </div>
+  <div class="karte">
+    <div class="label">Betriebsausgaben {{ jahr }}</div>
+    <div class="wert">{{ euer_jahr.ausgaben_cent | euro }} €</div>
+    <div class="label">
+      {%- if euer_jahr.afa_cent %}davon Abschreibungen {{ euer_jahr.afa_cent | euro }} € ·
+      {% endif %}nach Abfluss (§ 11 EStG)
+    </div>
+    <div class="label"><a href="/euer">zur EÜR</a></div>
+  </div>
+  <div class="karte">
+    <div class="label">{% if euer_jahr.gewinn_cent < 0 %}Verlust{% else %}Gewinn{% endif %}
+      {{ jahr }}</div>
+    <div class="wert">{{ euer_jahr.gewinn_cent | euro_text }} €</div>
+    <div class="label">Einnahmen minus Ausgaben, Stand heute</div>
+    <div class="label"><a href="/euer">zur EÜR</a></div>
+  </div>
+</div>
+{# Zweite Reihe: die Arbeit, die noch zu Geld werden muss, und die Sicherung. #}
+<div class="karten">
+  <div class="karte">
+    <div class="label">Nicht abgerechnet</div>
+    <div class="wert">{{ offen | sum(attribute='minuten') | dezimalstunden }} h</div>
+    {%- set entwurf_minuten = offen | sum(attribute='entwurf_minuten') %}
+    <div class="label">bei {{ offen | length }} Kunden
+      {%- if entwurf_minuten %}, davon {{ entwurf_minuten | dezimalstunden }} h im Entwurf{% endif %}</div>
+  </div>
+  <div class="karte">
+    <div class="label">Offene Rechnungen</div>
+    <div class="wert">{{ rechnungen | sum(attribute='offen_cent') | euro }} €</div>
+    <div class="label">{{ rechnungen | length }} Stück</div>
+  </div>
+  <div class="karte">
+    <div class="label">Letzte geprüfte Sicherung</div>
+    <div class="wert">
+      {%- if backup_alter is none %}—
+      {%- elif backup_alter == 0 %}heute
+      {%- else %}{{ tage(backup_alter) }}{% endif %}</div>
+    <div class="label">
+      {%- if backup_ungeprueft %}
+        <a href="/backup">noch nicht geprüft — jetzt prüfen</a>
+      {%- elif backup_alter is none %}
+        <a href="/backup">noch keine — jetzt sichern</a>
+      {%- elif backup_alter > backup_warnung_ab %}
+        <a href="/backup">älter als {{ backup_warnung_ab }} Tage</a>
+      {%- else %}
+        <a href="/backup">Sicherung</a>
+      {%- endif %}</div>
+  </div>
+</div>
+
+{#- Naechste und ueberfaellige Vorauszahlungen eines Jahres, je mit " · " davor
+    -- ausser der ersten, wenn ``punkt`` falsch ist (eigene Zeile ohne Ruecklage). #}
+{% macro vorauszahlungen(vz_jahr, punkt=true) -%}
+  {%- for t in vz_erinnerungen if t.termin.year == vz_jahr %}
+  {{- ' · ' if punkt or not loop.first else ' ' -}}
+  <a href="/steuer?jahr={{ vz_jahr }}#vorauszahlungen">
+  {%- if t.ueberfaellig %}Rate vom {{ t.faellig.strftime('%d.%m.') }}
+  ({{ empfaenger_text[t.empfaenger] }}, {{ t.betrag_cent | euro_ganz }} €) nicht gezahlt
+  {%- else %}nächste Vorauszahlung {{ t.faellig.strftime('%d.%m.') }}:
+  {{ t.betrag_cent | euro_ganz }} € ({{ empfaenger_text[t.empfaenger] }}){% endif %}</a>
+  {%- endfor %}
+{%- endmacro %}
+{# Die Steuerruecklage als grosse Kachel unter den Kennzahlen -- dieselbe Zahl
+   und derselbe Stil wie auf /steuer, denn das ist der Betrag, der nicht
+   ausgegeben werden darf. Zum Jahreswechsel zwei Kacheln: das neue Jahr und
+   die noch offene des Vorjahres. #}
+<div class="steuerzeilen">
+{%- for steuer_jahr, steuer in steuer_zeilen %}
+<div class="ruecklage">
+  <div class="label">Steuerrücklage {{ steuer_jahr }}
+    {%- if steuer.tarif.entwurf %} · Tarifentwurf, vorläufig{% endif %}</div>
+  <div class="wert"><a href="/steuer?jahr={{ steuer_jahr }}"><strong class="mono">{{ steuer.offen_cent | euro_ganz }} €</strong></a></div>
+  <div class="label">zurücklegen
+  {%- if steuer.cent_je_euro %} · etwa {{ steuer.cent_je_euro }} Cent je eingenommenem Euro{% endif %}
+  {%- if steuer.erwartet_unter_euer %} · Achtung: der erwartete Jahresgewinn liegt unter dem
+  Gewinn laut EÜR, danach wären es {{ steuer.offen_laut_euer_cent | euro_ganz }} €{% endif %}
+  {%- if steuer.gewinn_cent == 0 and steuer.gewinn_aus_euer %} · noch kein Gewinn in der EÜR
+  {%- elif steuer.gewinn_cent < 0 %}
+  {%- if steuer.mehrsteuer_cent < 0 %} · der Verlust spart etwa {{ (-steuer.mehrsteuer_cent) | euro_ganz }} €{% endif %}
+  {%- if steuer.vz_gesamt_cent %} · voraussichtlich etwa {{ steuer.zurueck_cent | euro_ganz }} € zurück{% endif %}
+  {%- elif steuer.zurueck_cent > 0 %} · Vorauszahlungen etwa {{ steuer.zurueck_cent | euro_ganz }} € über der Schätzung{% endif %}
+  {{- vorauszahlungen(steuer_jahr) }}
+  </div>
+</div>
+{%- else %}
+<p class="steuerzeile">
+  <span class="label">Steuerrücklage</span>
+  <a href="/steuer">Steuerrücklage schätzen</a> — wie viel vom Gewinn für die Einkommensteuer zur
+  Seite gehört.
+</p>
+{%- endfor %}
+{#- Raten eines Jahres ohne Ruecklagenzeile (etwa ohne Angabe zum Gehalt):
+    die Erinnerung haengt nicht an der Schaetzung. #}
+{%- for vz_jahr in vz_jahre_ohne_zeile %}
+<p class="steuerzeile">
+  <span class="label">Vorauszahlungen {{ vz_jahr }}</span>
+  {{- vorauszahlungen(vz_jahr, punkt=false) }}
+</p>
+{%- endfor %}
+</div>
+
+{% if euer_luecke.anzahl %}
+<div class="meldung warn">
+  <strong>{% if euer_luecke.anzahl == 1 %}1 bezahlter Beleg{% else %}{{ euer_luecke.anzahl }}
+    bezahlte Belege{% endif %}
+    ohne Kategorie — {{ euer_luecke.betrag_cent | euro }} € fehlen in der EÜR.</strong>
+  Ohne Kategorie gibt es keine Kennzahl und damit keine Zeile. Das Geld ist erfasst,
+  zählt aber nicht mit, und der Gewinn fällt um genau diesen Betrag zu hoch aus.
+  <a href="/belege?offen=1">Belege zuordnen</a>
+</div>
+{% endif %}
+
+{% if unbestaetigt.anzahl %}
+<div class="meldung warn">
+  <strong>{% if unbestaetigt.anzahl == 1 %}1 bezahlter, automatisch gebuchter Beleg{% else
+    %}{{ unbestaetigt.anzahl }} bezahlte, automatisch gebuchte Belege{% endif %} noch nicht
+    mit „Stimmt so“ bestätigt — {{ unbestaetigt.betrag_cent | euro }} € zählen schon in der
+    EÜR.</strong>
+  Die Werte hat das Tool selbst ausgelesen; bitte am Beleg prüfen.
+  <a href="/belege?offen=1">Zu den ungeklärten Belegen</a>
+</div>
+{% endif %}
+
+{% if angaben_offen %}
+<div class="meldung warn">
+  <strong>Angaben fehlen: {{ angaben_offen }}
+    {%- if angaben_offen == 1 %} Eintrag{% else %} Einträge{% endif %}.</strong>
+  Der WISO-Import weiß nicht alles — etwa Anschaffungstag und -kosten eines Anlageguts aus
+  einem Vorjahr. Bis sie da sind, fehlt der Betrag in der EÜR.
+  <a href="/angaben">Angaben ausfüllen</a>
+</div>
+{% endif %}
+
+{% if anlage_offen.anzahl %}
+<div class="meldung warn">
+  <strong>{% if anlage_offen.anzahl == 1 %}1 Beleg ist{% else %}{{ anlage_offen.anzahl }}
+    Belege sind{% endif %} als Anlagegut markiert, aber noch nicht im Verzeichnis —
+    {{ anlage_offen.betrag_cent | euro }} € fehlen in der EÜR.</strong>
+  Ein Beleg mit dem Haken „Anlagegut“ zählt nicht als Ausgabe, sondern über die
+  Abschreibung — und die gibt es erst mit dem Eintrag im
+  <a href="/anlagen">Anlagenverzeichnis</a>. Dort steht er zum Übernehmen bereit.
+</div>
+{% endif %}
+
+<h2>Nicht abgerechnete Zeiten</h2>
+{% if offen %}
+<table>
+  <thead><tr><th>Kunde</th><th class="zahl">Stunden</th><th class="zahl">Einträge</th>
+    <th>Zeitraum</th><th></th></tr></thead>
+  <tbody>
+  {% for z in offen %}
+    <tr>
+      <td>{{ z.name }}</td>
+      <td class="zahl">{{ '%.2f' | format(z.minuten / 60) | replace('.', ',') }}</td>
+      <td class="zahl">{{ z.eintraege }}</td>
+      <td>{{ z.ab | datum_de }} – {{ z.bis | datum_de }}
+        {%- if z.entwurf_minuten %} <span class="chip im_entwurf">{{ z.entwurf_minuten | dezimalstunden }} h im Entwurf</span>{% endif %}</td>
+      <td>{% if z.entwurf_id %}<a href="/rechnung/{{ z.entwurf_id }}">Entwurf öffnen</a>{% endif %}
+        {%- if z.offene_minuten %} <a href="/rechnung/neu?kunde={{ z.id }}">Rechnung erstellen</a>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Keine offenen Zeiten. <a href="/zeiten">Zeit erfassen</a></p>
+{% endif %}
+
+<h2>Offene Rechnungen</h2>
+{% if rechnungen %}
+<table>
+  <thead><tr><th>Nummer</th><th>Kunde</th><th>Fällig</th>
+    <th class="zahl">Offen</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rechnungen %}
+    <tr>
+      <td><a href="/rechnung/{{ r.id }}">{{ r.nummer }}</a></td>
+      <td>{{ r.kunde }}</td>
+      <td>{{ (r.faellig_am | datum_de) or '—' }}</td>
+      <td class="zahl">{{ r.offen_cent | euro }} €</td>
+      <td><span class="chip {{ r.chip | lower }}">{{ r.chip | status_text }}</span>{% if r.ueberfaellig and r.chip != 'UEBERFAELLIG' %}
+          <span class="chip ueberfaellig">{{ tage(r.tage_ueber_faellig) }} über</span>{% endif %}</td>
+      {# Rechnungsablauf: Geldeingang und Versand direkt hier, je mit Datum. #}
+      <td class="aktionen">
+        <details>
+          <summary>Bezahlt …</summary>
+          <form method="post" action="/rechnung/{{ r.id }}/zahlung">
+            <input type="hidden" name="zurueck" value="/">
+            <input type="hidden" name="erwartet_bezahlt" value="{{ r.bezahlt_cent }}">
+            <label>Geldeingang am <input name="datum" type="date" value="{{ heute }}" required></label>
+            <label>Betrag in € <input name="betrag_euro" placeholder="{{ r.offen_cent | euro }}"
+              size="10"><small>leer = offener Rest</small></label>
+            <label>Art <select name="art">
+              {% for a in ['UEBERWEISUNG','KARTE','BAR','PAYPAL','SONSTIGES'] %}
+              <option value="{{ a }}">{{ a | status_text }}</option>{% endfor %}</select></label>
+            <button type="submit">Als bezahlt erfassen</button>
+          </form>
+        </details>
+        {% if not r.versendet_am %}
+        <details>
+          <summary>Versendet …</summary>
+          <form method="post" action="/rechnung/{{ r.id }}/versendet">
+            <input type="hidden" name="zurueck" value="/">
+            <label>Versendet am <input name="datum" type="date" value="{{ heute }}" required></label>
+            <button type="submit">Vermerken</button>
+          </form>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hinweis">„Bezahlt …“ erfasst den Geldeingang: der Status folgt aus der Zahlung, und ihr
+  Datum zählt für EÜR (§ 11 EStG) und § 19-Umsatz.</p>
+{% else %}
+<p class="leer">Keine offenen Rechnungen.</p>
+{% endif %}
+{% endblock %}

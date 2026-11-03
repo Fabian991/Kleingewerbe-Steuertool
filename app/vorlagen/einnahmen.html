@@ -1,0 +1,200 @@
+{% extends "basis.html" %}
+{% set aktiv = 'einnahmen' %}
+{% block titel %}Einnahmen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Einnahmen ohne Rechnung {{ jahr }}</h1>
+<p class="hinweis">Affiliate-Auszahlungen, Werbeerlöse, Plattform-Abrechnungen,
+  Sachzuwendungen, der Verkauf eines eigenen Geräts — Betriebseinnahmen, zu denen dieses
+  Tool keine Rechnung schreibt. Gezählt wird der Tag, an dem das Geld da war (§ 11 EStG).
+  Sie gehen in die EÜR, die Steuerrücklage und — nur mit Inlandskategorie — in den
+  § 19-Umsatz.</p>
+
+{% if fehler %}<div class="meldung fehler" role="alert">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg" role="status">{{ erfolg }}</div>{% endif %}
+{% if warnung %}<div class="meldung warn" role="status">{{ warnung }}</div>{% endif %}
+
+{% if angaben %}
+<h2>Angaben fehlen</h2>
+{% set zurueck = '/einnahmen' %}
+{% for a in angaben %}{% include "angaben_formular.html" %}{% endfor %}
+{% endif %}
+
+<div class="karten">
+  <div class="karte">
+    <div class="label">Einnahmen ohne Rechnung {{ jahr }}</div>
+    <div class="wert">{{ gesamt_cent | euro }} €</div>
+    <div class="label">in der EÜR</div>
+  </div>
+  <div class="karte">
+    <div class="label">davon in den § 19-Umsatz</div>
+    <div class="wert">{{ zaehlt_cent | euro }} €</div>
+    <div class="label">nur Inland</div>
+  </div>
+</div>
+
+{% if summen %}
+<table>
+  <thead><tr><th>Kategorie</th><th>KZ</th><th class="zahl">Anzahl</th>
+    <th class="zahl">Summe</th><th>§ 19-Umsatz</th></tr></thead>
+  <tbody>
+  {% for s in summen %}
+    <tr><td>{{ s.bezeichnung }}</td><td class="mono">{{ s.kennzahl }}</td>
+      <td class="zahl">{{ s.anzahl }}</td><td class="zahl mono">{{ s.cent | euro }} €</td>
+      <td>{% if s.schluessel in zaehlt %}zählt{% else %}<span class="gedaempft">zählt nicht</span>{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="nicht-drucken">
+<h2 id="neu">Einnahme erfassen</h2>
+{#- Abgewiesen kommt die Seite mit Meldung und Eingaben zurueck; das Ziel
+    "#neu" laesst den Browser hierher springen, nicht an den Seitenanfang. #}
+{% set w = formular.werte %}
+<form method="post" action="/einnahmen#neu" enctype="multipart/form-data">
+  {% if formular.fehler %}
+  <div class="meldung {% if formular.aehnliche %}warn{% else %}fehler{% endif %}" role="alert">
+    {% if formular.aehnliche %}
+    <strong>Vermutlich schon erfasst</strong> — dieselbe Einnahme zählte sonst doppelt in EÜR
+    und § 19-Umsatz:
+    <ul>{% for z in formular.aehnliche %}<li>{{ beschreibung(z) }}</li>{% endfor %}</ul>
+    <label class="zeile"><input type="checkbox" name="trotzdem" value="1"> Es ist eine
+      andere Zahlung — trotzdem erfassen</label>
+    {% else %}{{ formular.fehler }}{% endif %}
+    {% if w.datei %}<br><small>Die Datei bitte noch einmal wählen.</small>{% endif %}
+  </div>
+  {% endif %}
+  <div class="felder">
+    <label>Zugeflossen am <small>Tag der Gutschrift auf dem Konto</small>
+      <input type="date" name="zufluss_am" required min="2000-01-01" max="{{ heute }}"
+             value="{{ w.zufluss_am or heute }}"></label>
+    <label>Betrag <input name="betrag" inputmode="decimal" required placeholder="120,50"
+      autocomplete="off" value="{{ w.betrag or '' }}"></label>
+    <label>Zahler <small>wer gezahlt hat, etwa die Plattform</small>
+      <input name="zahler" required maxlength="120" list="zahlerliste" autocomplete="off"
+             placeholder="Beispiel Partnerprogramm" value="{{ w.zahler or '' }}"></label>
+    <label>Kategorie
+      <select name="kategorie_id">
+        <option value="">wie für den Zahler gemerkt (sonst Vorschlag)</option>
+        {% for k in kategorien %}
+          <option value="{{ k.id }}" {% if w.kategorie_id == k.id | string %}selected{% endif %}>{{ k.bezeichnung }} (KZ {{ k.kennzahl }})</option>
+        {% endfor %}
+      </select></label>
+  </div>
+  <datalist id="zahlerliste">
+    {% for z in zahler %}<option value="{{ z.name }}">{{ z.kategorie }}</option>{% endfor %}
+  </datalist>
+  <label>Notiz <textarea name="notiz" rows="2" maxlength="1000"
+    placeholder="Auszahlung März, Abrechnung Nr. …">{{ w.notiz or '' }}</textarea></label>
+  <label>Abrechnung der Plattform <small>freiwillig: PDF, Bild oder E-Mail — wird
+    schreibgeschützt mit Prüfsumme abgelegt</small>
+    <input type="file" name="datei" accept=".pdf,.xml,.jpg,.jpeg,.png,.tif,.tiff,.heic,.webp,.eml"></label>
+  <label class="zeile"><input type="checkbox" name="merken" value="1"
+    {% if not w or w.merken == '1' %}checked{% endif %}>
+    Kategorie für diesen Zahler merken</label>
+  <p class="hinweis">{{ rechtsgrund }}</p>
+  <button type="submit">Einnahme erfassen</button>
+</form>
+</div>
+
+<h2>Erfasste Einnahmen</h2>
+<form method="get" action="/einnahmen" class="zeile nicht-drucken">
+  <label>Jahr
+    <select name="jahr">
+      {% for j in jahre %}<option value="{{ j }}" {% if j == jahr %}selected{% endif %}>{{ j }}</option>{% endfor %}
+    </select></label>
+  <label class="zeile"><input type="checkbox" name="geloescht" value="1"
+    {% if mit_geloeschten %}checked{% endif %}> gelöschte zeigen</label>
+  <button type="submit">Anzeigen</button>
+</form>
+{% if liste %}
+<table class="belegliste">
+  <thead><tr><th>Datum</th><th>Zahler</th><th>Kategorie</th><th class="zahl">Betrag</th>
+    <th></th></tr></thead>
+  <tbody>
+  {% for e in liste %}
+    <tr id="einnahme-{{ e.id }}"{% if e.geloescht_am %} class="geloescht"{% endif %}>
+      <td class="datum">{{ e.zufluss_am | datum_de }}
+        {%- if e.dateien %}<br><a href="/einnahmen/{{ e.id }}/datei" class="gedaempft">Datei</a>{% endif %}
+        {%- if e.geloescht_am %}<br><span class="chip storniert" title="{{ e.geloescht_grund }}">gelöscht</span>{% endif %}</td>
+      <td class="zahler">{{ e.zahler }}
+        {%- if e.herkunft == 'WISO' %}<br><span class="chip" title="{{ e.notiz }}">aus WISO{% if e.wiso_nummer %} · Nr. {{ e.wiso_nummer }}{% endif %}</span>
+        {%- elif e.notiz %}<br><span class="gedaempft notiz">{{ e.notiz }}</span>{% endif %}</td>
+      <td>{{ e.kategorie }} <span class="gedaempft">KZ&nbsp;{{ e.kennzahl }}</span>
+        {%- if e.kategorie_schluessel not in zaehlt %}<br><span class="gedaempft">zählt nicht zu § 19</span>{% endif %}</td>
+      <td class="zahl mono">{{ e.betrag_cent | euro }} €</td>
+      <td class="aktionen">
+        {% if e.geloescht_am %}
+        <form method="post" action="/einnahmen/{{ e.id }}/wiederherstellen">
+          <button type="submit" class="leise">Wiederherstellen</button></form>
+        {% else %}
+        <details>
+          <summary>Ändern</summary>
+          <form method="post" action="/einnahmen/{{ e.id }}/kategorie">
+            <label>Kategorie
+              <select name="kategorie_id">
+                {% for k in kategorien %}
+                  <option value="{{ k.id }}" {% if k.id == e.kategorie_id %}selected{% endif %}>{{ k.bezeichnung }}</option>
+                {% endfor %}
+              </select></label>
+            <label class="zeile"><input type="checkbox" name="merken" value="1">
+              für {{ e.zahler }} merken</label>
+            <button type="submit">Speichern</button>
+          </form>
+          {% if not e.dateien %}
+          <form method="post" action="/einnahmen/{{ e.id }}/datei" enctype="multipart/form-data">
+            <label>Abrechnung anhängen
+              <input type="file" name="datei" required></label>
+            <button type="submit" class="leise">Datei anhängen</button>
+          </form>
+          {% endif %}
+          <details class="loeschen">
+            <summary>Einnahme löschen …</summary>
+            <form method="post" action="/einnahmen/{{ e.id }}/loeschen">
+              <p class="hinweis">Die Einnahme zählt danach nicht mehr. Der Datensatz bleibt
+                im Journal und unter „gelöschte zeigen“.</p>
+              <fieldset>
+                <legend>Grund</legend>
+                {% for g in gruende %}
+                <label class="zeile"><input type="radio" name="grund" value="{{ g }}"> {{ g }}</label>
+                {% endfor %}
+                <label>oder in eigenen Worten <input name="grund_frei" maxlength="200"></label>
+              </fieldset>
+              <button type="submit" class="still">Ja, löschen</button>
+            </form>
+          </details>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Für {{ jahr }} ist keine Einnahme ohne Rechnung erfasst.</p>
+{% endif %}
+
+<h2 id="zahler">Gemerkte Zahler</h2>
+{% if zahler %}
+<p class="hinweis">Die Kategorie, die eine neue Einnahme dieses Zahlers bekommt — beim
+  Erfassen und beim nächsten WISO-Import.</p>
+<table>
+  <thead><tr><th>Zahler</th><th>Einstufung</th></tr></thead>
+  <tbody>
+  {% for z in zahler %}
+    <tr><td>{{ z.name }}</td>
+      <td><form method="post" action="/einnahmen/zahler" class="zeile">
+        <input type="hidden" name="schluessel" value="{{ z.schluessel }}">
+        <select name="kategorie_id" aria-label="Kategorie für {{ z.name }}">
+          {% for k in kategorien %}
+            <option value="{{ k.id }}" {% if k.id == z.kategorie_id %}selected{% endif %}>{{ k.bezeichnung }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="leise">Ändern</button></form></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Noch kein Zahler gemerkt.</p>
+{% endif %}
+{% endblock %}

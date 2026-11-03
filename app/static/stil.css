@@ -1,0 +1,1021 @@
+/* ==========================================================================
+   Steuer-Tool – Stylesheet
+
+   Gestaltungsidee: ein gebundenes Hauptbuch, kein Dashboard. Das heisst:
+
+   * Typografie traegt die Hierarchie, nicht Kaesten und Schatten. Serifen
+     fuer Titel und grosse Zahlen, eine neutrale Grotesk fuer alles andere,
+     Tabellenziffern ueberall, wo Betraege untereinander stehen.
+   * Haarlinien statt Rahmen. Eine Tabelle hat eine Kopflinie, Zeilenlinien
+     und eine Summenlinie -- wie ein Kontoblatt.
+   * Eine Akzentfarbe (Flaschengruen) fuer Verweise und die Primaeraktion.
+     Rot, Ocker und Gruen fuer Zustaende, gedeckt wie Stempelfarbe.
+   * Papierton statt Weiss, Tinte statt Schwarz.
+
+   Keine externen Schriften: die Anwendung laeuft ohne Netz. Die Stapel
+   greifen auf dem Mac auf Iowan Old Style/Palatino und Helvetica Neue
+   zurueck, auf anderen Systemen auf deren Verwandte.
+   ========================================================================== */
+
+:root {
+  --papier: #f4f1ea;
+  --blatt: #fcfbf7;
+  --tinte: #1c1b18;
+  --tinte-2: #46443f;
+  --gedaempft: #716d65;
+  --linie: #d8d2c4;
+  --linie-stark: #1c1b18;
+  --akzent: #1f4d3a;
+  --akzent-flaeche: #e3ebe4;
+  --ok: #2d6a4f;
+  --ok-flaeche: #e6efe8;
+  --warn: #8a5a00;
+  --warn-flaeche: #f5ead3;
+  --fehler: #8b2e2e;
+  --fehler-flaeche: #f3e2df;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+           "Liberation Serif", Georgia, "Times New Roman", serif;
+  --grotesk: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --register-breite: 236px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papier: #1b1a18;
+    --blatt: #24221f;
+    --tinte: #ebe7dd;
+    --tinte-2: #c9c4b8;
+    --gedaempft: #9a958a;
+    --linie: #3a3732;
+    --linie-stark: #d8d2c4;
+    --akzent: #8cc4a6;
+    --akzent-flaeche: #243229;
+    --ok: #8cc4a6;
+    --ok-flaeche: #22302a;
+    --warn: #dcae5a;
+    --warn-flaeche: #332b1b;
+    --fehler: #e29a92;
+    --fehler-flaeche: #35221f;
+  }
+}
+
+/* ------------------------------------------------------------ Grundgeruest */
+
+* { box-sizing: border-box; }
+
+/* Das Attribut hidden gewinnt immer: sonst hebt "label { display: grid }"
+   oder "button { display: inline-block }" es auf, und ein Feld, das ein
+   Skript verbirgt, bliebe stehen. */
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--tinte);
+  font: 15px/1.55 var(--grotesk);
+  font-feature-settings: "kern", "liga";
+}
+
+.seite {
+  display: grid;
+  grid-template-columns: var(--register-breite) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+main {
+  max-width: 1000px;
+  padding: 44px 56px 120px;
+  min-width: 0;
+}
+
+a {
+  color: var(--akzent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: .18em;
+  text-decoration-color: color-mix(in srgb, var(--akzent) 45%, transparent);
+}
+a:hover { text-decoration-color: currentColor; }
+
+/* -------------------------------------------------------------- Register */
+
+.register {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 36px 28px 32px;
+  border-right: 1px solid var(--linie);
+}
+
+.marke {
+  display: block;
+  font-family: var(--serif);
+  font-size: 21px;
+  letter-spacing: .01em;
+  color: var(--tinte);
+  text-decoration: none;
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--linie-stark);
+}
+.marke small {
+  display: block;
+  font-family: var(--grotesk);
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: var(--gedaempft);
+  margin-top: 3px;
+}
+
+.register nav { display: grid; gap: 22px; }
+.register .gruppe { display: grid; gap: 2px; }
+.register .gruppe > span {
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--gedaempft);
+  margin-bottom: 4px;
+}
+.register nav a {
+  display: block;
+  color: var(--tinte-2);
+  text-decoration: none;
+  padding: 4px 10px;
+  margin-left: -10px;
+  border-left: 2px solid transparent;
+  border-radius: 0 2px 2px 0;
+}
+.register nav a:hover { color: var(--tinte); background: var(--blatt); }
+.register nav a[aria-current="page"] {
+  color: var(--tinte);
+  font-weight: 600;
+  border-left-color: var(--akzent);
+}
+
+/* ------------------------------------------------------------ Typografie */
+
+h1, h2, h3 { font-weight: 400; color: var(--tinte); }
+
+h1 {
+  font-family: var(--serif);
+  font-size: 34px;
+  line-height: 1.15;
+  letter-spacing: -.005em;
+  margin: 0 0 8px;
+}
+h1 .chip { vertical-align: .35em; margin-left: 6px; }
+
+h1 + p.hinweis { font-size: 15px; max-width: 64ch; margin-bottom: 36px; }
+
+h2 {
+  font-family: var(--serif);
+  font-size: 23px;
+  line-height: 1.2;
+  margin: 48px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--linie);
+}
+h2 .gedaempft { font-family: var(--grotesk); font-size: 14px; }
+
+h3.tag {
+  font-family: var(--grotesk);
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--gedaempft);
+  margin: 30px 0 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--linie-stark);
+}
+h3.tag .gedaempft { letter-spacing: 0; text-transform: none; font-size: 13px; float: right; }
+
+p { margin: 0 0 14px; }
+p.hinweis, ol.hinweis, ul.hinweis { color: var(--gedaempft); font-size: 14px; }
+p.hinweis { max-width: 70ch; margin: 0 0 18px; }
+ol.hinweis li, ul.hinweis li { margin: 4px 0; }
+p.gross { font-family: var(--serif); font-size: 36px; line-height: 1.1; margin: 8px 0 6px; }
+
+.gedaempft { color: var(--gedaempft); font-weight: 400; }
+.leer { color: var(--gedaempft); padding: 12px 0; font-style: italic; }
+
+strong { font-weight: 600; }
+small { font-size: 12.5px; }
+
+code {
+  font-family: var(--mono);
+  font-size: .88em;
+  background: var(--blatt);
+  border: 1px solid var(--linie);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+/* Eine Nummer im Fliesstext ("RE-2026-0011") wird nicht am Bindestrich
+   getrennt: als inline-block wandert sie als Ganzes in die naechste Zeile.
+   "white-space: nowrap" taete dasselbe, zog aber mit einem langen Pfad
+   (Sicherungsziel, Journalspiegel) bei 420 px die ganze Seite auf -- so
+   bricht ein Pfad, der allein nicht in die Zeile passt, in seinem Kasten um. */
+p.hinweis code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+}
+code.pfad { overflow-wrap: anywhere; }
+
+/* Tabellenziffern: Betraege und Nummern stehen untereinander in einer Flucht.
+   Die Klasse "mono" bedeutet hier Ziffern gleicher Breite, keine andere
+   Schrift -- ein Kontoblatt ist in einer Schrift gesetzt. */
+.mono, .zahl, .wert, p.gross {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* --------------------------------------------------------------- Zahlen */
+
+.karten {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 0 28px;
+  margin: 28px 0 8px;
+  border-top: 1px solid var(--linie-stark);
+  border-bottom: 1px solid var(--linie);
+}
+/* Zwei Reihen Kennzahlen auf der Uebersicht (Geld oben, Arbeit darunter):
+   die zweite schliesst ohne doppelte Linie an die erste an. */
+.karten + .karten { margin-top: 0; border-top: 0; }
+.karte { padding: 18px 0 16px; min-width: 0; }
+.karte + .karte { border-left: 1px solid var(--linie); padding-left: 24px; margin-left: -8px; }
+.karte .label {
+  font-size: 13px;
+  color: var(--gedaempft);
+}
+.karte > .label:first-child {
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.karte .wert {
+  font-family: var(--serif);
+  font-size: 36px;
+  line-height: 1.1;
+  margin: 8px 0 6px;
+  color: var(--tinte);
+}
+.karte .wert a { text-decoration: none; }
+.karte .label a { color: var(--akzent); }
+.karte p.hinweis { font-size: 13.5px; margin: 8px 0 10px; }
+.karte form { gap: 10px; margin-top: 8px; }
+
+.balken {
+  height: 4px;
+  background: var(--linie);
+  margin: 10px 0 8px;
+  overflow: hidden;
+}
+.balken span { display: block; height: 100%; background: var(--ok); }
+.balken span.gelb, .balken span.orange { background: var(--warn); }
+.balken span.rot { background: var(--fehler); }
+
+/* ------------------------------------------------------------- Tabellen */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 0;
+  font-size: 14.5px;
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--linie);
+}
+th:last-child, td:last-child { padding-right: 0; }
+thead th {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gedaempft);
+  padding-top: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--linie-stark);
+  white-space: nowrap;
+}
+td.zahl, th.zahl { text-align: right; white-space: nowrap; }
+th.nr, td.nr { width: 3rem; }
+tfoot th, tfoot td {
+  border-top: 1.5px solid var(--linie-stark);
+  border-bottom: 0;
+  padding-top: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--tinte);
+}
+/* Lange Woerter (eingefuegte URLs, Hashes) brechen innerhalb der Zelle um,
+   statt die ganze Seite waagerecht aufzuziehen -- aber nur, wenn ein Wort
+   allein nicht in die Zeile passt. "anywhere" zerriss vorher auch Woerter,
+   die in die naechste Zeile gepasst haetten ("Musterma|nn GmbH",
+   "19.10.202|6"). Getrennt wird nach deutschen Regeln (lang="de" in
+   basis.html). Zahlen-, Nummern-, Datums- und Aktionszellen bleiben einzeilig. */
+td:not(.zahl):not(.mono):not(.aktionen) { overflow-wrap: break-word; hyphens: auto; }
+td.datum, .mono:not(pre) { white-space: nowrap; }
+/* Zahler und Notiz einer Einnahme: eine eingefuegte Adresse ist EIN Wort.
+   "break-word" zaehlt in einer Tabelle nicht zur Mindestbreite -- die Liste
+   lief damit seitlich aus der Inhaltsspalte; "anywhere" bricht sie um. */
+table.belegliste td.zahler, table.belegliste .notiz { overflow-wrap: anywhere; }
+/* Zeilenumbrueche in einer Beschreibung bleiben sichtbar. */
+.beschreibung { white-space: pre-line; }
+tr.inaktiv td { color: var(--gedaempft); }
+tr.gedaempft td { color: var(--gedaempft); }
+/* Ein geloeschter Beleg (Liste mit "geloeschte zeigen"): nur noch zum
+   Nachvollziehen da -- die Betraege zaehlen nicht, und das sieht man. */
+tr.geloescht td { color: var(--gedaempft); }
+tr.geloescht td.zahl { text-decoration: line-through; }
+/* Loeschen in der Belegliste: der zweite Schritt unter "Ändern". */
+td.aktionen details.loeschen { display: block; margin-top: 10px; }
+td.aktionen details.loeschen fieldset { padding-top: 10px; gap: 6px; }
+td.aktionen details.loeschen .meldung.warn { margin: 0; padding: 9px 12px; font-size: 13.5px; }
+td .chip { margin-top: 1px; }
+
+td.aktionen { white-space: nowrap; text-align: right; }
+td.aktionen details { display: inline-block; text-align: left; }
+td.aktionen summary, summary {
+  cursor: pointer;
+  color: var(--gedaempft);
+  font-size: 13px;
+  text-decoration: underline dotted;
+  text-underline-offset: .2em;
+}
+summary:hover { color: var(--tinte); }
+td.aktionen details form { margin: 10px 0 4px; gap: 8px; max-width: 320px; white-space: normal; }
+
+/* Zeitenliste: jeder Tag ist eine eigene Tabelle. Mit fester Spaltenaufteilung
+   stehen Dauer, Status und Betrag in allen Tagesbloecken buendig untereinander. */
+table.zeitenliste { table-layout: fixed; }
+table.zeitenliste col.sp-dauer { width: 4.5rem; }
+table.zeitenliste col.sp-status { width: 14rem; }
+table.zeitenliste col.sp-betrag { width: 6.5rem; }
+table.zeitenliste col.sp-aktionen { width: 11rem; }
+table.zeitenliste td.aktionen { white-space: normal; }
+td.aktionen details[open] { padding-bottom: 6px; }
+/* Offen braucht das Feld Platz fuer seine Formulare (und bei Fremdwaehrung
+   fuer die Umrechnung): ohne Mindestbreite gab die Tabelle der letzten
+   Spalte nur den Rest, und Auswahl und Text liefen rechts hinaus. */
+td.aktionen details[open] { min-width: 16rem; }
+/* Belegliste: „Stimmt so“ steht als eigener Knopf oben in der Aktionszelle,
+   „Ändern“ darunter, und aufgeklappt bleibt alles in der Breite der Spalte.
+   Vorher standen beide in einer nicht umbrechenden Zeile: der Knopf rutschte
+   an der Grundlinie bis neben „Beleg löschen …“ (ein Klick dort bestaetigte
+   den Beleg, statt ihn zu loeschen), und die Seite scrollte seitlich. */
+table.belegliste td.aktionen { white-space: normal; text-align: left; }
+table.belegliste td.aktionen form.inline { display: block; margin: 0 0 6px; }
+table.belegliste td.aktionen details { display: block; }
+table.belegliste td.aktionen details form,
+table.belegliste td.aktionen details.loeschen { max-width: 20rem; }
+/* Rechnungsliste: die Schnellaktionen (Bezahlt …, Versendet …, Löschen)
+   stehen untereinander, ein aufgeklapptes Formular in der Breite der Spalte.
+   Nebeneinander in einer nicht umbrechenden Zelle zogen zwei offene
+   Formulare die Tabelle ueber den Inhaltsbereich hinaus, und die Seite
+   scrollte seitlich. "Rückzahlung offen" steht ueber dem Betrag, statt die
+   Spalte "Offen" doppelt so breit zu machen. */
+table.rechnungsliste td.aktionen { white-space: normal; }
+table.rechnungsliste td.aktionen details { display: block; margin-top: 4px; }
+table.rechnungsliste td.aktionen details[open] { min-width: 13rem; }
+table.rechnungsliste td.aktionen details form { max-width: 15rem; }
+table.rechnungsliste .offen-art {
+  display: block;
+  font-family: var(--grotesk);
+  font-size: 12.5px;
+  color: var(--gedaempft);
+}
+/* ----------------------------------------------------------------- Chips */
+
+.chip {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  padding: 1px 6px 0;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  color: var(--gedaempft);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.chip.ueberfaellig, .chip.storniert { color: var(--fehler); }
+.chip.teilbezahlt, .chip.gestellt, .chip.versendet,
+.chip.im_entwurf, .chip.entwurf { color: var(--warn); }
+.chip.bezahlt, .chip.in_rechnung_gestellt { color: var(--ok); }
+.chip.abgeschrieben, .chip.nicht_abrechenbar,
+.chip.ohne_berechnung_gestellt, .chip.storno { color: var(--gedaempft); }
+.chip.kulanz, .chip.laufend { color: var(--warn); }
+.chip.storniert_gebunden { color: var(--fehler); }
+.chip.mono { text-transform: none; letter-spacing: 0; font-family: var(--mono); }
+
+/* ------------------------------------------------------------- Meldungen */
+
+.meldung {
+  border-left: 3px solid var(--linie-stark);
+  background: var(--blatt);
+  padding: 13px 18px;
+  margin: 0 0 24px;
+  font-size: 14.5px;
+  /* Dateinamen aus Mail-Anhaengen und Pfade haben oft keine Leerzeichen
+     ("Rechnung_2026_Telekom_..._Oktober.xml"). Ohne Umbruch liefen sie aus
+     dem Kasten, und auf dem Handy weitete sich die ganze Seite auf. */
+  overflow-wrap: anywhere;
+}
+.meldung p:last-child, .meldung ul:last-child { margin-bottom: 0; }
+.meldung.fehler { border-color: var(--fehler); background: var(--fehler-flaeche); }
+.meldung.warn { border-color: var(--warn); background: var(--warn-flaeche); }
+.meldung.erfolg { border-color: var(--ok); background: var(--ok-flaeche); }
+.meldung.laufend { border-color: var(--akzent); background: var(--akzent-flaeche); }
+.meldung strong { color: var(--tinte); }
+.meldung .mono { font-weight: 600; }
+.meldung form.inline { margin-left: 8px; }
+.meldung ul { margin: 8px 0 0; padding-left: 20px; }
+.meldung table { font-size: 14px; margin-top: 12px; }
+.meldung p.hinweis { color: var(--tinte-2); }
+/* Das Banner des offenen Timers: Kopfzeile, Titel, Beschreibung, Knoepfe. */
+.meldung.timer p { margin: 0 0 6px; }
+.meldung.timer form { gap: 8px; margin-top: 10px; }
+.meldung.timer textarea { min-height: 4.6em; }
+.meldung.timer .knoepfe { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.meldung.timer .knoepfe button { margin: 0; }
+/* Die Arbeitsabschnitte unter dem Titel: Uhrzeiten, buendig lesbar. */
+.abschnitte { font-variant-numeric: tabular-nums; }
+/* Ein Abschnitt bricht nicht mitten um ("11:14–" / "12:04"), nur zwischen zweien. */
+.abschnitt { white-space: nowrap; }
+/* "Noch nicht abgerechnet": je Kunde eine Zeile, erfasst gegen abrechenbar. */
+ul.abrechenbar { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 8px; }
+ul.abrechenbar li { font-size: 14.5px; line-height: 1.5; }
+ul.abrechenbar a { margin-left: 6px; font-size: 13.5px; }
+
+/* ---------------------------------------------------------- Schaltflaechen */
+
+button, a.knopf {
+  display: inline-block;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 9px 16px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 2px;
+  background: var(--tinte);
+  color: var(--papier);
+  cursor: pointer;
+  text-decoration: none;
+  justify-self: start;
+  transition: background-color .12s, border-color .12s;
+}
+button:hover, a.knopf:hover { background: var(--akzent); border-color: var(--akzent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, a.knopf:focus-visible {
+  outline: 2px solid var(--akzent); outline-offset: 2px;
+}
+
+a.knopf.still {
+  background: none;
+  color: var(--tinte);
+  border-color: var(--linie-stark);
+}
+a.knopf.still:hover { background: var(--blatt); color: var(--akzent); border-color: var(--akzent); }
+
+button.still {
+  background: none;
+  border-color: transparent;
+  color: var(--gedaempft);
+  font-weight: 400;
+  font-size: 13px;
+  padding: 4px 8px;
+  text-decoration: underline dotted;
+  text-underline-offset: .2em;
+}
+button.still:hover { color: var(--fehler); background: none; border-color: transparent; }
+
+/* Leise, aber zustimmend: "Stimmt so" in einer Tabellenzeile, "Jetzt
+   abholen". button.still faerbt sich beim Darueberfahren rot -- das passt zu
+   "Wegwerfen", nicht zu einer Bestaetigung. */
+button.leise {
+  background: none;
+  color: var(--tinte);
+  border-color: var(--linie-stark);
+  font-size: 13px;
+  padding: 4px 10px;
+}
+button.leise:hover { background: var(--blatt); color: var(--akzent); border-color: var(--akzent); }
+
+/* Mehrere Knoepfe nebeneinander in einem Formular (das Formular selbst ist
+   ein Raster und stellte sie untereinander). */
+.knopfzeile { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* ------------------------------------------------------------- Formulare */
+
+form { display: grid; gap: 16px; }
+form.inline { display: inline; }
+form.inline label { display: inline-grid; }
+form.inline select { width: auto; min-width: 120px; }
+/* WISO-Vorschau: die Aktion je Buchung bleibt lesbar ("übernehmen", "verknüpfen"). */
+select.aktion-wahl { min-width: 9.5rem; }
+form.zeile { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+form.zeile > * { width: auto; flex: 0 1 auto; }
+form.zeile > label { gap: 3px; }
+form.zeile select { max-width: 280px; }
+form.zeile > label.zeile { align-self: center; padding-bottom: 6px; }
+form.zeile input[name="titel"] { flex: 1 1 200px; }
+/* Die Beschreibung ist mehrzeilig und bekommt eine eigene volle Zeile: in
+   ein einzeiliges Feld passte keine ausfuehrliche Aufstellung. Aufziehen
+   geht senkrecht (textarea, resize: vertical). */
+form.zeile textarea[name="beschreibung"] { flex: 1 1 100%; min-height: 4.6em; }
+form.zeile button { align-self: flex-end; }
+form.zeile a { align-self: center; font-size: 14px; }
+form.zeile + p.hinweis { margin-top: 10px; }
+
+fieldset {
+  border: 0;
+  border-top: 1px solid var(--linie-stark);
+  padding: 16px 0 4px;
+  margin: 6px 0 0;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+legend {
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gedaempft);
+  padding: 0 10px 0 0;
+}
+
+.felder {
+  display: grid;
+  gap: 14px 20px;
+  /* min(..., 100%): in einer schmalen Karte (Reisen, 420 px) ragten 210 px
+     breite Felder sonst aus der Karte und zogen die Seite auf. */
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+}
+.felder > label { align-content: start; }
+input[type="date"] { max-width: 230px; }
+
+label { display: grid; gap: 4px; font-size: 13.5px; color: var(--tinte-2); }
+label > small { order: 3; color: var(--gedaempft); font-size: 12.5px; line-height: 1.4; margin-top: 1px; }
+label.zeile { display: block; color: var(--tinte); font-size: 14.5px; line-height: 1.5; }
+label.zeile input { width: auto; vertical-align: -2px; margin-right: 8px; }
+label.abhaken {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  margin: 10px 0;
+  font-size: 14.5px;
+  color: var(--tinte);
+}
+label.abhaken input { width: auto; margin-top: 3px; }
+
+input, select, textarea {
+  font: inherit;
+  font-size: 15px;
+  color: var(--tinte);
+  background: var(--blatt);
+  border: 1px solid var(--linie);
+  border-radius: 2px;
+  padding: 8px 10px;
+  width: 100%;
+  min-width: 0;
+}
+input::placeholder, textarea::placeholder { color: var(--gedaempft); opacity: .75; }
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--akzent);
+  outline-offset: 0;
+  border-color: var(--akzent);
+}
+input[type="checkbox"], input[type="radio"] {
+  width: 16px; height: 16px; padding: 0; margin: 0;
+  accent-color: var(--akzent);
+}
+input[type="file"] { padding: 7px 8px; }
+input.unsicher { border-color: var(--warn); background: var(--warn-flaeche); }
+textarea { resize: vertical; line-height: 1.5; }
+select { padding-right: 28px; }
+
+.modi { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }
+label.modus {
+  border: 1px solid var(--linie);
+  border-radius: 2px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  cursor: pointer;
+  color: var(--tinte);
+  background: var(--blatt);
+}
+label.modus:has(input:checked) { border-color: var(--linie-stark); box-shadow: inset 0 0 0 1px var(--linie-stark); }
+label.modus small { grid-column: 2; color: var(--gedaempft); }
+label.modus input { width: auto; }
+
+ul { margin: 6px 0 0; padding-left: 20px; }
+
+/* -------------------------------------------------------- Steuerruecklage */
+
+/* Formular links, Ergebnis rechts -- auf dem Handy untereinander, das
+   Formular zuerst; nach dem Speichern springt die Seite zum Ergebnis. */
+.steuer-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 48px;
+  align-items: start;
+}
+.steuer-raster > section > h2:first-child { margin-top: 28px; }
+.steuer-formular { gap: 18px; }
+.steuer-formular fieldset { gap: 12px; }
+.steuer-formular .feldtext { margin: 0; font-size: 14px; color: var(--tinte-2); }
+.steuer-formular .feldtext.hinweis { color: var(--gedaempft); font-size: 13.5px; }
+.steuer-formular .feldtext button { margin-top: 6px; display: block; }
+.steuer-formular .auswahl { display: flex; flex-wrap: wrap; gap: 4px 22px; }
+.steuer-formular .knopfzeile small { font-size: 12.5px; }
+/* Nach einer 422: das abgewiesene Feld rot umrandet, die Meldung darunter. */
+.steuer-formular [aria-invalid="true"] {
+  border-color: var(--fehler);
+  box-shadow: 0 0 0 1px var(--fehler);
+}
+.steuer-formular .auswahl[aria-invalid="true"] { box-shadow: none; }
+/* Das Feld hat nach der 422 sofort den Fokus; der gruene Fokusrahmen
+   ueberdeckte sonst die rote Markierung. */
+.steuer-formular [aria-invalid="true"]:focus { outline-color: var(--fehler); border-color: var(--fehler); }
+.steuer-formular .feldfehler { color: var(--fehler); font-size: 13.5px; }
+.steuer-eingaben details.loeschen { margin-top: 18px; font-size: 13.5px; }
+/* Vorauszahlungen: je Termin Betrag und Haken nebeneinander -- auch auf dem Handy. */
+.steuer-formular .raten { display: grid; gap: 10px; }
+.steuer-formular .rate {
+  display: grid;
+  /* Feste Breite fuer den Haken: "gezahlt" und "schon gezahlt" sind
+     verschieden lang, die Betragsfelder sollen trotzdem buendig stehen. */
+  grid-template-columns: minmax(0, 1fr) 8.5rem;
+  gap: 4px 14px;
+  align-items: end;
+}
+.steuer-formular .rate label.abhaken { margin-bottom: 9px; font-size: 13.5px; }
+.steuer-formular details.raten-gemeinde { display: grid; gap: 10px; }
+.steuer-formular details.raten-gemeinde summary { font-size: 14px; }
+.steuer-formular details.raten-gemeinde[open] summary { margin-bottom: 8px; }
+.steuer-formular .feldwarnung {
+  border-left: 3px solid var(--warn);
+  background: var(--warn-flaeche);
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+.ruecklage ul.aufteilung { list-style: none; margin: 4px 0 0; padding: 0; }
+.ruecklage ul.aufteilung li { margin: 2px 0; }
+.steuer-eingaben details.loeschen summary { color: var(--gedaempft); cursor: pointer; }
+
+/* Eingang: "Alle prüfen und buchen" und "Alle wegwerfen" ueber der Tabelle,
+   "Alle angezeigten bestätigen" ueber der Liste. Aufgeklappt steht die
+   Rueckfrage unter dem Knopf, nicht daneben (auf dem Handy waere sie sonst
+   schmaler als ein Wort). */
+.eingang-knoepfe { margin: 4px 0 12px; align-items: flex-start; }
+.eingang-knoepfe details.loeschen, details.bestaetigen { font-size: 13.5px; }
+.eingang-knoepfe details.loeschen[open] { flex-basis: 100%; }
+.eingang-knoepfe details.loeschen form, details.bestaetigen form { margin-top: 10px;
+  max-width: 40rem; }
+details.bestaetigen { margin: 0 0 12px; }
+/* Die Vorgabe "in der Regel schon bezahlt" unter dem Upload: Abstand zum
+   naechsten Absatz, sonst klebt "Speichern" am Hinweis darunter. */
+#bezahlt-vorgabe { margin: 4px 0 24px; gap: 8px; }
+#bezahlt-vorgabe p.hinweis { margin: 0; }
+
+/* Vorschau "Alle prüfen und buchen" auf dem Handy: je Datei ein Block statt
+   einer Tabelle, die man waagerecht schieben muesste -- die Auswahl der
+   Kategorie lag sonst ausserhalb des Fensters. */
+@media (max-width: 600px) {
+  table.sammel thead { display: none; }
+  table.sammel, table.sammel tbody, table.sammel tr, table.sammel td { display: block; }
+  table.sammel { overflow-x: visible; }
+  table.sammel tr { padding: 10px 0; border-bottom: 1px solid var(--linie); }
+  table.sammel td { border: 0; padding: 2px 0; text-align: left; }
+  table.sammel td.wahl { float: left; margin-right: 10px; }
+  table.sammel td[data-label]::before { content: attr(data-label) " "; color: var(--gedaempft);
+    font-size: 12px; }
+  table.sammel select { width: 100%; }
+  /* Die Jahresordner: der Pfad bricht um, "Entfernen" bleibt im Fenster. */
+  table.jahresordner { display: table; width: 100%; overflow-x: visible; }
+  table.jahresordner td.pfad { word-break: break-all; }
+  table.jahresordner td.aktionen { padding-left: 6px; }
+}
+
+.ruecklage {
+  border-top: 1px solid var(--linie-stark);
+  border-bottom: 1px solid var(--linie);
+  padding: 18px 0 16px;
+  margin: 0 0 18px;
+}
+.ruecklage .label { font-size: 13px; color: var(--gedaempft); }
+.ruecklage > .label:first-child {
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.ruecklage .wert {
+  font-family: var(--serif);
+  font-size: 50px;
+  line-height: 1.05;
+  margin: 8px 0 6px;
+  color: var(--tinte);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Auf der Uebersicht ist die Zahl ein Link auf /steuer: gleiche Schrift,
+   kein Unterstrich, nicht fett. */
+.ruecklage .wert a { color: inherit; text-decoration: none; }
+.ruecklage .wert strong { font-weight: 400; }
+.satzzeile, .faustregel { font-size: 14.5px; max-width: 60ch; }
+.satzzeile small, .faustregel small { display: block; color: var(--gedaempft); margin-top: 2px; }
+
+table.aufschluesselung { margin-top: 18px; }
+table.aufschluesselung caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gedaempft);
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--linie-stark);
+}
+table.aufschluesselung tfoot tr.unter td {
+  border-top: 0;
+  padding-top: 2px;
+  font-weight: 400;
+  color: var(--tinte-2);
+}
+.steuer-ergebnis .meldung { margin: 18px 0 0; }
+
+table.stufen tr.markiert td { background: var(--akzent-flaeche); }
+table.stufen td:first-child, table.stufen th:first-child { padding-left: 8px; }
+table.stufen .stufenname { color: var(--gedaempft); margin-left: 10px; }
+table.stufen .chip { margin-left: 6px; }
+.steuer-ergebnis h2 + .ruecklage { border-top: 0; padding-top: 4px; }
+ul.rechenweg { max-width: 75ch; margin-top: 14px; }
+
+.nur-druck { display: none; }
+
+/* Uebersicht: die Steuerruecklage als Zeile unter den Kennzahlen. */
+.steuerzeilen { margin: 0 0 28px; }
+.steuerzeile {
+  margin: 0;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--linie);
+  font-size: 14.5px;
+  color: var(--tinte-2);
+}
+.steuerzeile .label {
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gedaempft);
+  margin-right: 10px;
+}
+.steuerzeile strong { font-family: var(--serif); font-size: 20px; font-weight: 400; color: var(--tinte); }
+
+/* ------------------------------------------- Kunde stilllegen, loeschen */
+
+.kunde-ende { margin-top: 36px; border-top: 1px solid var(--linie); }
+.kunde-ende form.zeile { display: block; margin: 0 0 8px; }
+details.loeschen { margin-top: 18px; font-size: 13.5px; }
+details.loeschen summary { color: var(--gedaempft); cursor: pointer; }
+details.loeschen[open] > form,
+details.loeschen[open] > p { margin-top: 12px; max-width: 70ch; }
+
+/* -------------------------------------------------------- Kundenimport */
+
+.importzahlen { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+/* Die Meldung einer Zeile steht direkt unter ihr, ohne Linie dazwischen. */
+table.importvorschau tr.mit-meldung td { border-bottom: 0; padding-bottom: 2px; }
+table.importvorschau tr.importmeldung td { padding-top: 0; font-size: 13.5px; }
+table.importvorschau tr.importmeldung p { margin: 0 0 4px; }
+table.importvorschau ul.fehlerliste { margin: 0 0 4px; padding-left: 18px; color: var(--fehler); }
+table.importvorschau ul.fehlerliste strong { color: var(--fehler); }
+table.importvorschau label.abhaken { margin-top: 6px; font-size: 13px; }
+table.importvorschau + .knopfzeile { margin-top: 18px; }
+/* Auf dem Handy scrollt die Tabelle waagerecht: die Meldung einer Zeile bleibt
+   sichtbar und bricht im Fenster um, statt rechts hinauszulaufen. */
+@media (max-width: 900px) {
+  table.importvorschau .zeilentext { position: sticky; left: 0; max-width: calc(100vw - 90px); }
+}
+
+/* ------------------------------------------------------- Fremdwaehrung */
+
+/* Fremdwaehrung in der Belegliste: der Satz unter dem Euro-Betrag ("100,00 USD
+   zum EZB-Kurs 1,0856 vom 13.03.2026") darf umbrechen, die Zahlenspalte
+   sonst nicht. Die Einzelheiten stehen unter "Ändern". */
+td.zahl .umrechnung {
+  display: inline-block;
+  max-width: 16em;
+  white-space: normal;
+  text-align: right;
+  font-family: var(--grotesk);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--gedaempft);
+  margin-top: 2px;
+}
+dl.umrechnung {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 12px;
+  max-width: 320px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  white-space: normal;
+}
+dl.umrechnung dt { color: var(--gedaempft); }
+dl.umrechnung dd { margin: 0; }
+dl.umrechnung dd.sha { white-space: normal; word-break: break-all; font-size: 11.5px; }
+/* Das Ergebnis einer Aktion an einem Beleg (Kurs pruefen, Kartenbetrag,
+   Zahlung) steht ueber seiner Zeile; der Sprung der Weiterleitung geht
+   hierher. */
+tr.zeilenmeldung td { border-bottom: 0; padding: 12px 0 0; }
+tr.zeilenmeldung .meldung { margin: 0; scroll-margin-top: 16px; }
+.fremdwaehrung { display: grid; gap: 14px; }
+.fremdwaehrung[hidden], .fremdwaehrung label[hidden] { display: none; }
+.fremdwaehrung .meldung { margin: 0; }
+/* Auf dem Handy scrollt die Tabelle waagerecht (siehe unten): dort darf die
+   Spalte breiter werden, statt den Satz Wort fuer Wort umzubrechen. */
+@media (max-width: 900px) {
+  td.zahl .umrechnung { min-width: 11em; }
+  /* Die Tabelle scrollt waagerecht und ist breiter als das Fenster: die
+     Meldung bleibt am linken Rand und so breit wie das Fenster, statt mit
+     der Tabelle rechts hinauszulaufen. */
+  tr.zeilenmeldung .meldung { position: sticky; left: 0; max-width: calc(100vw - 40px); }
+}
+
+/* --------------------------------------------------- PDF-Vorschau (Entwurf) */
+
+/* Die Vorschau des Entwurfs als echtes PDF, so hoch, dass eine Seite fast
+   ganz zu sehen ist. Weiss hinterlegt: auch im dunklen Modus ist Papier
+   weiss. */
+.vorschau iframe {
+  display: block;
+  width: 100%;
+  height: 80vh;
+  min-height: 420px;
+  border: 1px solid var(--linie);
+  background: #fff;
+}
+.vorschau .knopfzeile { margin: 0 0 12px; }
+/* Auf dem Handy zeigt der Browser ein PDF im Rahmen oft nur als erste Seite:
+   der Knopf "In neuem Tab öffnen" steht deshalb ueber dem Rahmen, und der
+   Rahmen laesst unter sich Platz zum Weiterscrollen. */
+@media (max-width: 700px) {
+  .vorschau iframe { height: 62vh; min-height: 320px; }
+}
+/* ------------------------------------------------------ Rechnungsablauf */
+
+/* Festgeschrieben -> versendet -> bezahlt als Leiste oben auf der
+   Rechnungsseite. Eine Haarlinie links wie ein Randvermerk im Kontobuch;
+   erledigte Schritte mit Haken, offene mit leerem Kreis. */
+ol.ablauf {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  border-left: 1px solid var(--linie);
+  display: grid;
+  gap: 14px;
+}
+ol.ablauf > li { position: relative; padding-left: 26px; display: grid; gap: 8px; }
+ol.ablauf > li::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid var(--linie-stark);
+  background: var(--papier);
+}
+ol.ablauf > li.erledigt::before {
+  content: "✓";
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--papier);
+  font-size: 9px;
+  line-height: 13px;
+  text-align: center;
+}
+ol.ablauf strong { font-weight: 500; }
+ol.ablauf form.zeile { gap: 10px; }
+ol.ablauf p.hinweis { margin: 0; font-size: 13.5px; }
+ol.ablauf details form { margin: 10px 0 6px; }
+
+p.kette { margin: -6px 0 18px; }
+.entwurfkopf { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline;
+               margin: 0 0 18px; }
+.entwurfkopf p.hinweis { margin: 0; }
+details.loeschen summary { color: var(--gedaempft); }
+details.loeschen[open] { flex-basis: 100%; }
+details.loeschen form { margin: 10px 0 0; gap: 8px; }
+
+.korrektur form.zeile input[name="grund"] { min-width: min(100%, 22rem); }
+.korrektur details { margin: 18px 0 0; }
+.korrektur details > form { margin: 12px 0 0; max-width: 62ch; }
+.korrektur details .meldung { margin: 0; }
+.korrektur fieldset label.zeile { margin: 4px 0; }
+
+/* ------------------------------------------------------------- Klein */
+
+@media (max-width: 900px) {
+  .seite { grid-template-columns: 1fr; }
+  .register {
+    position: static;
+    height: auto;
+    padding: 16px 20px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--linie);
+  }
+  .marke { margin-bottom: 10px; padding-bottom: 10px; font-size: 19px; }
+  .register nav {
+    display: flex;
+    gap: 0 18px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 0 -20px;
+    padding: 0 20px;
+  }
+  .register nav::-webkit-scrollbar { display: none; }
+  .register .gruppe { display: flex; gap: 0 14px; }
+  .register .gruppe > span { display: none; }
+  .register nav a {
+    white-space: nowrap;
+    margin: 0;
+    padding: 10px 0 9px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    font-size: 14px;
+  }
+  .register nav a:hover { background: none; }
+  .register nav a[aria-current="page"] { border-bottom-color: var(--akzent); font-weight: 500; }
+  main { padding: 28px 20px 80px; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 20px; margin-top: 36px; }
+  .karte .wert { font-size: 30px; }
+  .karte + .karte { border-left: 0; padding-left: 0; margin-left: 0; border-top: 1px solid var(--linie); }
+  table { display: block; overflow-x: auto; }
+  .steuer-raster { grid-template-columns: minmax(0, 1fr); }
+  .ruecklage .wert { font-size: 42px; }
+  /* Diese drei Tabellen sind fuer schmale Bildschirme gebaut (zwei
+     Zahlenspalten, umbrechende Beschriftung): als echte Tabelle fuellen sie
+     die Breite, statt in einem Rollkasten die letzte Spalte abzuschneiden. */
+  table.vergleich, table.stufen, table.aufschluesselung { display: table; }
+  table.vergleich thead th { white-space: normal; }
+  table.stufen .stufenname { display: block; margin-left: 0; }
+  table.stufen .chip { margin: 4px 6px 0 0; }
+}
+/* Auf dem Handy reichen zwei Zahlenspalten; der Unterschied steht schon im
+   Ergebnis darueber. */
+@media (max-width: 600px) {
+  table.vergleich .unterschied { display: none; }
+}
+
+/* ----------------------------------------------------------------- Druck */
+
+@media print {
+  .register { display: none; }
+  .seite { display: block; }
+  main { padding: 0; max-width: none; }
+  body { background: #fff; color: #000; }
+  button, a.knopf, form.zeile, td.aktionen { display: none; }
+  /* Auf Papier sind Eingabefelder, Aufklapper und Bearbeitungsabschnitte
+     leere Kaesten ("Aktionen" ohne Knopf, "Stornieren" mit leerem Feld). */
+  form, details, .nicht-drucken { display: none !important; }
+  .nur-druck { display: block !important; }
+  .steuer-raster { display: block; }
+  table.stufen tr.markiert td { background: none; font-weight: 600; }
+  /* Eine Zeile bricht nicht ueber den Seitenwechsel: sonst stand die
+     Markierung "mit Gewerbe" allein unter dem wiederholten Tabellenkopf. */
+  table.stufen tr, table.vergleich tr, table.aufschluesselung tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+/* Eine Ueberschrift, unter der unmittelbar ein Eingabeformular (POST) steht,
+   leitet einen Formular-Abschnitt ein ("Reise anlegen", "Anlagegut aufnehmen",
+   "Neue Leistung"). Ohne das Formular stuende sie auf Papier ueber einem
+   leeren Platz. Filterformulare (GET) bleiben aussen vor: unter "Bestand und
+   Abschreibung" folgt nach dem Filter die Tabelle. Eigene Regel, weil ein
+   Browser ohne :has() sonst die ganze Regel oben verwerfen wuerde. */
+@media print {
+  :is(h2, h3):has(+ form[method="post" i]) { display: none !important; }
+}

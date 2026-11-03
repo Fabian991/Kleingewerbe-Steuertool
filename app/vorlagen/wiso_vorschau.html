@@ -1,0 +1,392 @@
+{% extends "basis.html" %}
+{% set aktiv = 'wiso' %}
+{% block titel %}WISO-Import: Vorschau · Steuer-Tool{% endblock %}
+
+{#- Eine Buchung als Zellen: Datum, Text, Konto, Betrag. -#}
+{% macro zellen(p) -%}
+  <td class="datum">{{ p.zeile.datum | datum_de }}<br><span class="gedaempft mono">Nr. {{ p.zeile.buchungsnummer }}{% if p.zeile.teilbuchung != '1' %}/{{ p.zeile.teilbuchung }}{% endif %}</span></td>
+  <td>{{ p.zeile.text }}
+    {%- for h in p.hinweise %}<br><small class="gedaempft">Hinweis: {{ h }}</small>{% endfor %}</td>
+  <td class="mono" title="{{ p.kontobezeichnung }}">{{ p.sachkonto or p.zeile.konto }}</td>
+  <td class="zahl mono">{{ p.betrag_cent | euro }} €</td>
+{%- endmacro %}
+
+{#- Die Aktion einer Buchung. ``moeglich``: (Wert, Text) in dieser Reihenfolge. -#}
+{% macro aktion(p, moeglich) -%}
+  <td><select class="aktion-wahl" name="aktion_{{ p.schluessel }}" aria-label="Aktion für Buchung {{ p.schluessel }}">
+    {% for wert, text in moeglich %}
+      <option value="{{ wert }}" {% if aktionen[p.schluessel] == wert %}selected{% endif %}>{{ text }}</option>
+    {% endfor %}
+  </select></td>
+{%- endmacro %}
+
+{#- Die Kategorie einer neuen Ausgabe -- "wie das Konto" oder eigens. -#}
+{% macro kategorie(p) -%}
+  <select name="kat_{{ p.schluessel }}" aria-label="Kategorie für Buchung {{ p.schluessel }}">
+    <option value="">wie Konto{% if p.kategorie and p.kategorie_herkunft not in ('Zeile', 'Software-Titel') %}: {{ p.kategorie }}{% endif %}</option>
+    {% for k in ausgabenkategorien %}
+      <option value="{{ k.id }}" {% if p.kategorie_herkunft in ('Zeile', 'Software-Titel') and k.id == p.kategorie_id %}selected{% endif %}>{{ k.bezeichnung }}</option>
+    {% endfor %}
+  </select>
+  {%- if p.kategorie_herkunft == 'Software-Titel' %}<br><small class="gedaempft">Software-Titel unter GWG: Dauerlizenz vorgeschlagen</small>{% endif %}
+{%- endmacro %}
+
+{% block inhalt %}
+<h1>WISO-Import: Vorschau</h1>
+<p class="hinweis">{{ datei.name }} · Steuerjahr {{ datei.jahr }} · {{ datei.zeilen | length }}
+  Buchungen · gelesen als {{ datei.kodierung }}. Noch ist nichts übernommen: unten je
+  Gruppe prüfen, dann „übernehmen“ — alles in einem Schritt, oder nichts.</p>
+
+{% if meldung %}<div class="meldung warn" role="alert">{{ meldung }}</div>{% endif %}
+{% if datei.andere_jahre %}
+<div class="meldung warn">Die Datei enthält auch Zahlungsdaten aus
+  {% for j, n in datei.andere_jahre.items() %}{{ j }} ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}.
+  Abgeglichen wird gegen den Export {{ datei.jahr }}; die Zahlung zählt in der EÜR ihres
+  eigenen Jahres.</div>
+{% endif %}
+{% if datei.fehler %}
+<div class="meldung warn"><strong>{{ datei.fehler | length }} Zeile{% if datei.fehler | length != 1 %}n{% endif %}
+  nicht lesbar</strong> — sie werden nicht übernommen:
+  <ul>{% for nr, grund in datei.fehler[:20] %}<li>Zeile {{ nr }}: {{ grund }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% set offen = plan.offen %}
+<table>
+  <thead><tr><th>Gruppe</th><th class="zahl">Anzahl</th><th class="zahl">Summe</th></tr></thead>
+  <tbody>
+    <tr><td><a href="#neu">neu — wird übernommen</a></td><td class="zahl">{{ plan.neu | length }}</td>
+      <td class="zahl mono">{{ summe(plan.neu) | euro }} €</td></tr>
+    <tr><td><a href="#verknuepfen">schon im Tool — verknüpfen</a></td><td class="zahl">{{ plan.verknuepfen | length }}</td>
+      <td class="zahl mono">{{ summe(plan.verknuepfen) | euro }} €</td></tr>
+    <tr><td><a href="#offen">wartet auf eine Angabe (Konto ohne Kategorie, Zahler)</a></td><td class="zahl">{{ offen | length }}</td>
+      <td class="zahl mono">{{ summe(offen) | euro }} €</td></tr>
+    <tr><td><a href="#geaendert">in WISO geändert</a></td><td class="zahl">{{ plan.gruppe('GEAENDERT') | length }}</td>
+      <td class="zahl mono">{{ summe(plan.gruppe('GEAENDERT')) | euro }} €</td></tr>
+    {% if plan.gruppe('UMGEBUCHT') %}
+    <tr><td><a href="#umgebucht">in WISO umgebucht — keine Geldbewegung mehr</a></td><td class="zahl">{{ plan.gruppe('UMGEBUCHT') | length }}</td>
+      <td class="zahl mono">{{ summe(plan.gruppe('UMGEBUCHT')) | euro }} €</td></tr>
+    {% endif %}
+    <tr><td><a href="#geloescht">in WISO gelöscht?</a></td><td class="zahl">{{ plan.geloescht | length }}</td><td></td></tr>
+    <tr><td><a href="#bekannt">schon übernommen — übersprungen</a></td><td class="zahl">{{ plan.gruppe('BEKANNT') | length }}</td>
+      <td class="zahl mono">{{ summe(plan.gruppe('BEKANNT')) | euro }} €</td></tr>
+    <tr><td><a href="#privat">privat — übersprungen</a></td><td class="zahl">{{ plan.gruppe('PRIVAT') | length }}</td>
+      <td class="zahl mono">{{ summe(plan.gruppe('PRIVAT')) | euro }} €</td></tr>
+    <tr><td><a href="#afa">AfA — nur zum Abgleich</a></td><td class="zahl">{{ plan.gruppe('AFA') | length }}</td>
+      <td class="zahl mono">{{ summe(plan.gruppe('AFA')) | euro }} €</td></tr>
+    {% if plan.gruppe('NICHT') %}
+    <tr><td><a href="#nicht">nicht übernehmbar</a></td><td class="zahl">{{ plan.gruppe('NICHT') | length }}</td>
+      <td class="zahl mono">{{ summe(plan.gruppe('NICHT')) | euro }} €</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<form method="post" action="/wiso/uebernehmen" id="wiso">
+  <input type="hidden" name="schluessel" value="{{ schluessel }}">
+  <input type="hidden" name="fingerabdruck" value="{{ plan.fingerabdruck }}">
+
+  {% if plan.konten %}
+  <h2 id="konten">Konten → Kategorien</h2>
+  <p class="hinweis">Je Konto des Kontenrahmens (SKR03) die Kategorie der EÜR — vorbelegt und
+    nach dem Übernehmen gemerkt. Ein Konto ohne Kategorie wartet unter „Angaben fehlen“.</p>
+  {#- class "sammel": am Handy je Konto ein Block -- die Auswahl der Kategorie
+      lag sonst rechts ausserhalb des Fensters (stil.css). #}
+  <table class="sammel">
+    <thead><tr><th>Konto</th><th class="zahl">Anzahl</th><th class="zahl">Summe</th><th>Kategorie</th></tr></thead>
+    <tbody>
+    {% for k in plan.konten %}
+      {% set gewaehlt = auswahl.konten.get(k.konto, k.kategorie_id) %}
+      <tr>
+        <td><span class="mono">{{ k.konto }}</span> {{ k.bezeichnung }}
+          {%- if k.unbekannt and not gewaehlt %} <span class="chip ueberfaellig">ohne Vorbelegung</span>{% endif %}</td>
+        <td class="zahl" data-label="Anzahl">{{ k.anzahl }}</td>
+        <td class="zahl mono" data-label="Summe">{{ k.cent | euro }} €</td>
+        <td data-label="Kategorie"><select name="konto_{{ k.konto }}" aria-label="Kategorie für Konto {{ k.konto }}">
+            <option value="">— bitte wählen —</option>
+            {% for kat in ausgabenkategorien %}
+              <option value="{{ kat.id }}" {% if kat.id == gewaehlt %}selected{% endif %}>{{ kat.bezeichnung }} (KZ {{ kat.kennzahl }})</option>
+            {% endfor %}
+          </select>
+          {%- if k.herkunft %}<br><small class="gedaempft">{{ k.herkunft }}</small>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if plan.zahler %}
+  <h2 id="zahler">Einnahmen je Zahler</h2>
+  <p class="hinweis">{{ rechtsgrund }} Die Wahl wird je Zahler gemerkt — für den nächsten Import
+    und für Einnahmen von Hand.</p>
+  <table class="sammel">
+    <thead><tr><th>Zahler</th><th class="zahl">Anzahl</th><th class="zahl">Summe</th><th>Einstufung</th></tr></thead>
+    <tbody>
+    {% for z in plan.zahler %}
+      {% set gewaehlt = auswahl.zahler.get(z.schluessel, z.einstufung) %}
+      <tr>
+        <td>{{ z.name }}</td>
+        <td class="zahl" data-label="Anzahl">{{ z.anzahl }}</td>
+        <td class="zahl mono" data-label="Summe">{{ z.cent | euro }} €</td>
+        <td data-label="Einstufung"><select name="zahler_{{ z.schluessel }}" aria-label="Einstufung für {{ z.name }}">
+            {% for wert, text in einstufung_texte.items() %}
+              <option value="{{ wert }}" {% if wert == gewaehlt %}selected{% endif %}>{{ text }}</option>
+            {% endfor %}
+            <option value="spaeter" {% if gewaehlt == 'spaeter' %}selected{% endif %}>später entscheiden (wartet unter „Angaben fehlen“)</option>
+          </select>
+          {%- if z.herkunft %}<br><small class="gedaempft">{{ z.herkunft }}</small>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% set neu_moeglich = [('uebernehmen', 'übernehmen'), ('auslassen', 'nicht übernehmen (merken)'), ('spaeter', 'später')] %}
+  <details id="neu" open>
+    <summary><h2>Neu — wird übernommen ({{ plan.neu | length }})</h2></summary>
+    {% if neu_ausgaben %}
+    <h3>Ausgaben → Belege ohne Datei, bezahlt am Zahlungsdatum</h3>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th>
+        <th>Lieferant · Kategorie</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in neu_ausgaben %}
+        <tr>{{ zellen(p) }}
+          <td>{{ p.lieferant }}<br>{{ kategorie(p) }}
+            {%- if p.kandidat %}<br><small class="gedaempft">möglicher Treffer: {{ p.kandidat.text }}</small>{% endif %}</td>
+          {{ aktion(p, neu_moeglich + ([('verknuepfen', 'mit Treffer verknüpfen')] if p.kandidat else [])) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if neu_anlagen %}
+    <h3>Anschaffungen → Beleg und Anlagegut</h3>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th>
+        <th>Abschreibung</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in neu_anlagen %}
+        <tr>{{ zellen(p) }}
+          <td>{% if p.nutzungsdauer %}{{ p.nutzungsdauer[0] }} {{ 'Jahr' if p.nutzungsdauer[0] == 1 else 'Jahre' }}
+              {%- if p.nutzungsdauer[1] == 'EIN_JAHR_IT' %} (IT, voll im Jahr){% endif %}
+              <br><small class="gedaempft">aus der WISO-AfA abgeleitet ({{ p.afa_wiso_cent | euro }} €), danach änderbar</small>
+            {%- else %}<span class="chip gestellt">Nutzungsdauer fehlt</span>
+              <br><small class="gedaempft">Beleg mit Haken „Anlagegut“; das Gut auf der Seite Anlagen anlegen</small>{% endif %}</td>
+          {{ aktion(p, neu_moeglich + ([('verknuepfen', 'mit Treffer verknüpfen')] if p.kandidat else [])) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if neu_einnahmen %}
+    <h3>Einnahmen → Einnahmen ohne Rechnung</h3>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th>
+        <th>Zahler · Kategorie</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in neu_einnahmen %}
+        <tr>{{ zellen(p) }}
+          <td>{{ p.zahler.name if p.zahler else '' }}<br><small class="gedaempft">{{ p.kategorie }}</small>
+            {%- if p.kandidat %}<br><small class="gedaempft">möglicher Treffer: {{ p.kandidat.text }}</small>{% endif %}</td>
+          {{ aktion(p, neu_moeglich + ([('verknuepfen', 'mit Treffer verknüpfen')] if p.kandidat else [])) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if not plan.neu %}<p class="leer">Nichts Neues.</p>{% endif %}
+  </details>
+
+  {% if plan.verknuepfen %}
+  <details id="verknuepfen" open>
+    <summary><h2>Schon im Tool — verknüpfen ({{ plan.verknuepfen | length }})</h2></summary>
+    <p class="hinweis">Gleicher Betrag, Datum höchstens 7 Tage entfernt, ähnlicher Name: diese
+      Buchung steht vermutlich schon im Tool (hochgeladener Beleg, Zahlung auf eine eigene
+      Rechnung, Einnahme von Hand). Verknüpft entsteht kein zweiter Eintrag — der künftige
+      Import überspringt sie.</p>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th>
+        <th>Im Tool</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in plan.verknuepfen %}
+        <tr>{{ zellen(p) }}
+          <td>{{ p.kandidat.text }}
+            {%- if p.kandidat.vorgaenger %}<br><small class="gedaempft">hängt noch an einer Buchung,
+              die im neuen Export fehlt (in WISO gelöscht und neu erfasst?) — „verknüpfen“ hängt
+              ihn auf diese Nummer um</small>{% endif %}</td>
+          {{ aktion(p, [('verknuepfen', 'verknüpfen'), ('uebernehmen', 'trotzdem neu übernehmen'), ('auslassen', 'nicht übernehmen (merken)'), ('spaeter', 'später')]) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% if offen %}
+  <details id="offen" open>
+    <summary><h2>Wartet auf eine Angabe ({{ offen | length }})</h2></summary>
+    <p class="hinweis">Oben dem Konto eine Kategorie bzw. dem Zahler eine Einstufung geben und
+      „Vorschau aktualisieren“ — oder so übernehmen: dann warten diese Buchungen unter
+      „Angaben fehlen“ und kommen mit der Angabe nach.</p>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th>
+        <th>Es fehlt</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in offen %}
+        <tr>{{ zellen(p) }}
+          <td>{% if p.art == 'AUSGABE' %}Kategorie für Konto {{ p.sachkonto }}{% else %}Einstufung für {{ p.zahler.name if p.zahler else '' }}{% endif %}</td>
+          {{ aktion(p, [('spaeter', 'später (Angaben fehlen)'), ('auslassen', 'nicht übernehmen (merken)')] + ([('verknuepfen', 'mit Treffer verknüpfen')] if p.kandidat else [])) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% set geaendert = plan.gruppe('GEAENDERT') %}
+  {% if geaendert %}
+  <details id="geaendert" open>
+    <summary><h2>In WISO geändert ({{ geaendert | length }})</h2></summary>
+    <p class="hinweis">Schon übernommen, seither in WISO geändert. „übernehmen“: der bisherige
+      Eintrag im Tool bekommt die Löschmarkierung (er bleibt im Journal), der neue entsteht.
+      „ignorieren“: die Änderung wird nicht übernommen und nicht wieder gefragt. Ein
+      verknüpfter, im Tool selbst gebuchter Eintrag wird nie gelöscht.</p>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag neu</th>
+        <th>vorher</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in geaendert %}
+        {% set alt = inhalte.get(p.alt.id, {}) %}
+        <tr>{{ zellen(p) }}
+          <td><small>{{ alt.get('zahlungsdatum', '') | datum_de }} · {{ alt.get('text', '') }} ·
+            {{ ((alt.get('soll_cent') or alt.get('haben_cent') or 0)) | euro }} €
+            {%- if p.aenderungen %}<br>geändert: {{ p.aenderungen | join(', ') }}{% endif %}
+            {%- if p.alt.verknuepft %}<br><span class="chip">verknüpft</span>{% endif %}
+            {%- if p.im_tool_geloescht %}<br><span class="chip storniert">im Tool schon gelöscht</span>
+              — „übernehmen“ legte ihn neu an{% endif %}
+            {%- if p.datei_am_alten and not p.im_tool_geloescht %}<br>Datei am bisherigen Eintrag:
+              {{ p.datei_am_alten }} — „übernehmen“ hängt sie an den neuen{% endif %}</small></td>
+          {{ aktion(p, [('spaeter', 'später'), ('uebernehmen', 'trotzdem neu anlegen' if p.im_tool_geloescht else 'übernehmen'), ('ignorieren', 'ignorieren')]) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% set umgebucht = plan.gruppe('UMGEBUCHT') %}
+  {% if umgebucht %}
+  <details id="umgebucht" open>
+    <summary><h2>In WISO umgebucht ({{ umgebucht | length }})</h2></summary>
+    <p class="hinweis">Schon übernommen, in WISO aber auf ein Konto ohne Geldfluss umgebucht
+      (etwa Privat) oder auf einen Zahltag in der Zukunft verschoben. Im Tool zählt der
+      Eintrag noch in EÜR und § 19-Umsatz. „im Tool löschen“ setzt die Löschmarkierung (ein
+      verknüpfter, im Tool selbst gebuchter Eintrag bleibt, nur die Verknüpfung wird gelöst);
+      „im Tool behalten“ fragt nicht wieder.</p>
+    <table class="sammel">
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th>
+        <th>vorher → jetzt</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for p in umgebucht %}
+        {% set alt = inhalte.get(p.alt.id, {}) %}
+        <tr>{{ zellen(p) }}
+          <td><small>vorher: {{ alt.get('zahlungsdatum', '') | datum_de }} · Konto {{ alt.get('konto', '') }} ·
+            {{ ((alt.get('soll_cent') or alt.get('haben_cent') or 0)) | euro }} €<br>jetzt: {{ p.umgebucht }}
+            {%- if p.alt.verknuepft %}<br><span class="chip">verknüpft</span>{% endif %}
+            {%- if p.im_tool_geloescht %}<br><span class="chip storniert">im Tool schon gelöscht</span>{% endif %}</small></td>
+          {{ aktion(p, [('spaeter', 'später'), ('loeschen', 'Verknüpfung lösen' if p.alt.verknuepft else 'im Tool löschen'), ('ignorieren', 'im Tool behalten')]) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% if plan.geloescht %}
+  <details id="geloescht" open>
+    <summary><h2>In WISO gelöscht? ({{ plan.geloescht | length }})</h2></summary>
+    <p class="hinweis">Früher übernommen, im neuen Export {{ datei.jahr }} nicht mehr vorhanden.
+      „löschen“ setzt die Löschmarkierung (ein verknüpfter, im Tool selbst gebuchter Eintrag
+      bleibt, nur die Verknüpfung wird gelöst); „behalten“ fragt nicht wieder.</p>
+    <table class="sammel">
+      <thead><tr><th>Nr.</th><th>Datum</th><th>Text</th><th class="zahl">Betrag</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for z in plan.geloescht %}
+        {% set alt = inhalte.get(z.id, {}) %}
+        <tr><td class="mono">{{ z.buchungsnummer }}</td>
+          <td class="datum">{{ alt.get('zahlungsdatum', '') | datum_de }}</td>
+          <td>{{ alt.get('text', '') }}{% if z.verknuepft %} <span class="chip">verknüpft</span>{% endif %}
+            {%- if z.id in plan.nachfolger %}<br><small class="gedaempft">neu erfasst als
+              Nr. {{ plan.nachfolger[z.id] }}? Mit „verknüpfen“ dort wird der Eintrag umgehängt —
+              dann gilt die Wahl hier nicht.</small>{% endif %}</td>
+          <td class="zahl mono">{{ ((alt.get('soll_cent') or alt.get('haben_cent') or 0)) | euro }} €</td>
+          <td><select name="geloescht_{{ z.id }}" aria-label="Aktion für Buchung {{ z.buchungsnummer }}">
+            {% set gw = auswahl.geloescht.get(z.id, 'spaeter') %}
+            <option value="spaeter" {% if gw == 'spaeter' %}selected{% endif %}>später</option>
+            <option value="loeschen" {% if gw == 'loeschen' %}selected{% endif %}>{% if z.verknuepft %}Verknüpfung lösen{% else %}im Tool löschen{% endif %}</option>
+            <option value="behalten" {% if gw == 'behalten' %}selected{% endif %}>behalten</option>
+          </select></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% set bekannt = plan.gruppe('BEKANNT') %}
+  <details id="bekannt">
+    <summary><h2>Schon übernommen — übersprungen ({{ bekannt | length }})</h2></summary>
+    {% if bekannt %}
+    <table>
+      <thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th class="zahl">Betrag</th><th></th></tr></thead>
+      <tbody>
+      {% for p in bekannt %}
+        <tr>{{ zellen(p) }}<td>{% if p.alt.status == 'AUSGELASSEN' %}<span class="chip">bewusst nicht übernommen</span>
+          {%- elif p.im_tool_geloescht %}<span class="chip storniert">im Tool gelöscht</span>
+          {%- elif p.umgebucht %}<span class="chip">in WISO umgebucht, im Tool behalten</span>
+          {%- elif p.alt.verknuepft %}<span class="chip">verknüpft</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </details>
+
+  {% set privat = plan.gruppe('PRIVAT') %}
+  <details id="privat">
+    <summary><h2>Privat — übersprungen ({{ privat | length }}, {{ summe(privat) | euro }} €)</h2></summary>
+    <p class="hinweis">Privatentnahmen und -einlagen sind keine Betriebsausgabe bzw. -einnahme.</p>
+    {% if privat %}
+    <table><tbody>{% for p in privat %}<tr>{{ zellen(p) }}</tr>{% endfor %}</tbody></table>
+    {% endif %}
+  </details>
+
+  <details id="afa" {% if plan.afa | selectattr('status', 'equalto', 'FEHLT') | list %}open{% endif %}>
+    <summary><h2>AfA — nur zum Abgleich ({{ plan.afa | length }})</h2></summary>
+    <p class="hinweis">Die von WISO geplante Jahres-AfA wird nicht gebucht — die AfA rechnet das
+      Tool selbst aus dem Anlagenverzeichnis. Sie dient dem Abgleich und der Nutzungsdauer.</p>
+    {% if plan.afa %}
+    <table>
+      <thead><tr><th>Anlagegut</th><th class="zahl">WISO</th><th>Im Tool</th></tr></thead>
+      <tbody>
+      {% for a in plan.afa %}
+        <tr><td>{{ a.name }}{% if a.anl_nr %} <span class="gedaempft">Anl.-Nr. {{ a.anl_nr }}</span>{% endif %}</td>
+          <td class="zahl mono">{{ a.betrag_cent | euro }} €</td>
+          <td>{% if a.status == 'NEU_ANLAGE' %}{% if a.tool_cent is not none %}{{ a.tool_cent | euro }} €{% else %}Anschaffung in dieser Datei — Nutzungsdauer daraus abgeleitet{% endif %}
+            {%- elif a.status == 'VERZEICHNIS' %}{{ a.tool_cent | euro }} €{% if a.tool_cent != a.betrag_cent %} <span class="chip gestellt">weicht ab</span>{% endif %}
+            {%- else %}<span class="chip gestellt">Angaben fehlen</span> angeschafft vor {{ datei.jahr }}: Anschaffungstag, -kosten und Nutzungsdauer fehlen{% if a.vermerkt %} (schon vermerkt){% endif %}{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </details>
+
+  {% set nicht = plan.gruppe('NICHT') %}
+  {% if nicht %}
+  <details id="nicht">
+    <summary><h2>Nicht übernehmbar ({{ nicht | length }})</h2></summary>
+    <table><tbody>{% for p in nicht %}<tr>{{ zellen(p) }}<td>{{ p.grund }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+  {% endif %}
+
+  <div class="knopfzeile">
+    {% set n = plan.neu | length + plan.verknuepfen | length %}
+    <button type="submit">{% if n == 1 %}1 Buchung übernehmen{% elif n %}{{ n }} Buchungen übernehmen{% else %}Entscheidungen übernehmen{% endif %}</button>
+    <button type="submit" formaction="/wiso/vorschau" class="leise">Vorschau aktualisieren</button>
+    <a href="/wiso">Abbrechen</a>
+  </div>
+  <p class="hinweis">Übernommen wird in einem Schritt — oder gar nicht. Belege aus WISO haben
+    keine Datei („aus WISO übernommen · Datei fehlt“); die Originale lassen sich später
+    anhängen.</p>
+</form>
+{% endblock %}

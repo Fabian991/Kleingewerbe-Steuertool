@@ -1,0 +1,97 @@
+{% extends "basis.html" %}
+{% set aktiv = 'kunden' %}
+{% block titel %}Vorschau Kundenimport · Steuer-Tool{% endblock %}
+{% set anzulegen = anzahl.NEU + anzahl.NAMENSGLEICH %}
+{% block inhalt %}
+<h1>Vorschau: {{ name }}</h1>
+<p class="hinweis">Noch ist nichts angelegt. Je Zeile steht, was beim Anlegen passiert —
+  vorhandene Kunden bleiben, wie sie sind; fehlerhafte Zeilen werden nicht angelegt.</p>
+
+{% if meldung %}<div class="meldung warn" role="alert">{{ meldung }}</div>{% endif %}
+{% if frueher %}
+<div class="meldung warn">Diese Datei wurde am {{ frueher.zeitpunkt_utc | zeit_lokal }} schon
+  einmal importiert. Was damals angelegt wurde und noch besteht, steht unten als „schon
+  vorhanden“ (gleiche Kundennummer oder USt-IdNr.) oder „gleicher Name“ — doppelt angelegt
+  wird es nur mit dem Haken „trotzdem anlegen“.</div>
+{% endif %}
+{% for h in plan.hinweise %}<p class="hinweis">{{ h }}</p>{% endfor %}
+
+<p class="importzahlen">
+  <span class="chip bezahlt">{{ anzahl.NEU }} neu</span>
+  {% if anzahl.NAMENSGLEICH %}<span class="chip im_entwurf">{{ anzahl.NAMENSGLEICH }} gleicher
+    Name</span>{% endif %}
+  {% if anzahl.VORHANDEN %}<span class="chip">{{ anzahl.VORHANDEN }} schon vorhanden</span>{% endif %}
+  {% if anzahl.FEHLER %}<span class="chip ueberfaellig">{{ anzahl.FEHLER }}
+    fehlerhaft</span>{% endif %}
+  {% if anzahl.UEBERSPRUNGEN %}<span class="chip">{{ anzahl.UEBERSPRUNGEN }}
+    übersprungen</span>{% endif %}
+</p>
+
+{#- Das Formular schickt nur Schluessel, Fingerabdruck und die Haken zurueck --
+    keine Kundendaten. Angelegt wird, was der Server beim Bestaetigen selbst
+    noch einmal aus der Datei liest und prueft. #}
+<form method="post" action="/kunden/import/anlegen" id="anlegen">
+  <input type="hidden" name="schluessel" value="{{ schluessel }}">
+  <input type="hidden" name="fingerabdruck" value="{{ plan.fingerabdruck }}">
+  <table class="importvorschau">
+    <thead><tr>
+      <th class="nr">Zeile</th><th>Status</th><th>Kunde</th><th>Anschrift</th>
+      <th>Einordnung</th><th class="zahl">Satz</th>
+    </tr></thead>
+    <tbody>
+    {% for z in plan.zeilen %}
+      {% set w = z.werte %}
+      {% set mit_meldung = z.grund or z.fehler or z.hinweise %}
+      <tr class="{{ 'gedaempft' if z.status in ('VORHANDEN', 'UEBERSPRUNGEN') }}
+                 {{- ' mit-meldung' if mit_meldung }}">
+        <td class="nr mono">{{ z.nummer }}</td>
+        <td>
+          {%- if z.status == 'NEU' %}<span class="chip bezahlt">wird angelegt</span>
+          {%- elif z.status == 'NAMENSGLEICH' %}<span class="chip im_entwurf">gleicher Name</span>
+          <label class="abhaken"><input type="checkbox" name="trotzdem" value="{{ z.nummer }}">
+            <span>trotzdem anlegen</span></label>
+          {%- elif z.status == 'VORHANDEN' %}<span class="chip">schon vorhanden</span>
+          {%- elif z.status == 'FEHLER' %}<span class="chip ueberfaellig">fehlerhaft</span>
+          {%- else %}<span class="chip">übersprungen</span>{% endif %}</td>
+        <td>{% if z.kundennummer %}<span class="mono">{{ z.kundennummer }}</span>
+          {%- if z.status in ('NEU', 'NAMENSGLEICH') and not z.nummer_angegeben %}
+          <small class="gedaempft">(automatisch)</small>{% endif %}<br>{% endif %}
+          <strong>{{ z.name or '—' }}</strong>
+          {%- if w.rechnungsname %}<br><small>Rechnung an: {{ w.rechnungsname }}</small>{% endif %}
+          {%- if w.ansprechpartner %}<br><small>z. Hd. {{ w.ansprechpartner }}</small>{% endif %}
+          {%- if w.email %}<br><small>{{ w.email }}</small>{% endif %}</td>
+        <td>{% if w %}{{ w.strasse }}<br>{{ w.plz }} {{ w.ort }}
+          {%- if w.land != 'DE' %}<br>{{ w.land | land_name }}{% endif %}
+          {%- else %}{{ z.felder.strasse }}<br>{{ z.felder.plz }} {{ z.felder.ort }}{% endif %}</td>
+        <td>{% if w %}{{ w.typ | status_text }} · {{ w.leistungsort | status_text }}
+          {%- if w.ust_idnr %}<br><span class="mono">{{ w.ust_idnr }}</span>{% endif %}{% endif %}</td>
+        <td class="zahl">{% if w and w.satz_cent is not none %}{{ w.satz_cent | euro }} €
+          {%- elif w %}Standard{% endif %}</td>
+      </tr>
+      {% if mit_meldung %}
+      <tr class="importmeldung"><td></td><td colspan="5"><div class="zeilentext">
+        {%- if z.grund %}<p class="hinweis">{{ z.grund }}</p>{% endif %}
+        {%- if z.fehler %}<ul class="fehlerliste">
+          {%- for spalte, grund in z.fehler %}<li><strong>{{ spalte }}</strong>: {{ grund }}</li>{% endfor %}
+        </ul>{% endif %}
+        {%- for h in z.hinweise %}<p class="hinweis">{{ h }}</p>{% endfor %}</div></td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="knopfzeile">
+    <button type="submit"{% if not anzulegen %} disabled{% endif %}>
+      {%- if anzahl.NAMENSGLEICH %}{{ anzahl.NEU }} Kunden anlegen (dazu die angehakten mit
+      gleichem Namen)
+      {%- elif anzulegen == 1 %}1 Kunden anlegen
+      {%- else %}{{ anzulegen }} Kunden anlegen{% endif %}</button>
+    <a class="knopf still" href="/kunden/import">Andere Datei wählen</a>
+    <a href="/kunden">Abbrechen</a>
+  </div>
+  {% if anzahl.FEHLER %}<p class="hinweis">{{ anzahl.FEHLER }} fehlerhafte
+    {{ 'Zeile wird' if anzahl.FEHLER == 1 else 'Zeilen werden' }} nicht angelegt. Korrigieren
+    und dieselbe Datei erneut hochladen: was dann schon angelegt ist, erkennt der Import als
+    vorhanden.</p>{% endif %}
+</form>
+{% endblock %}

@@ -1,0 +1,290 @@
+{% extends "basis.html" %}
+{% set aktiv = 'anlagen' %}
+{% block titel %}Anlagen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Anlagenverzeichnis {{ jahr }}</h1>
+<p class="hinweis">Pflichtbestandteil der EÜR, sobald Anlagevermögen existiert
+  (Anlage AVEÜR) — und kein Formalismus: die AfA-Beträge der EÜR kommen von hier.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+{% if warnung %}<div class="meldung warn" role="status">{{ warnung }}</div>{% endif %}
+
+{% if satz.veraltet %}<div class="meldung warn">{{ satz.hinweis }}</div>{% endif %}
+
+<div class="meldung warn">
+  <strong>Zwei Beträge, zwei verschiedene Zwecke.</strong> Das ist die Stelle, an der
+  sich die Ratgeber im Netz widersprechen:
+  <ul>
+    <li>Die <strong>Wertgrenze</strong> wird nach R 9b Abs. 2 EStR <strong>stets
+      netto</strong> geprüft — „Ob der Vorsteuerbetrag umsatzsteuerrechtlich abziehbar
+      ist, spielt in diesem Fall keine Rolle." {{ grenze_netto | euro }} € netto sind bei
+      19 % rund {{ grenze_brutto_19 | euro }} € brutto.</li>
+    <li><strong>Abgeschrieben</strong> wird der <strong>Bruttobetrag</strong>, weil die
+      nicht abziehbare Vorsteuer nach R 9b Abs. 1 EStR zu den Anschaffungskosten
+      gehört.</li>
+  </ul>
+  Ein Bürostuhl für 900 € brutto liegt also mit 756,30 € netto <em>unter</em> der Grenze
+  und ist sofort abziehbar — abgeschrieben würden aber 900 €.
+</div>
+
+{% if angaben %}
+<h2 id="angaben">Angaben fehlen</h2>
+<p class="hinweis">Aus dem WISO-Import: Güter aus einem Vorjahr, von denen WISO nur die
+  Jahres-AfA zeigt. Ausgefüllt rechnet das Tool die AfA selbst und vergleicht mit WISO.</p>
+{% set zurueck = '/anlagen' %}
+{% for a in angaben %}{% include "angaben_formular.html" %}{% endfor %}
+{% endif %}
+
+{% if verkaeufe %}
+<div class="meldung warn" id="verkaeufe">
+  <strong>Verkauf ohne Abgang:</strong> {% if verkaeufe | length == 1 %}eine Einnahme
+  „Verkauf eines Anlageguts“ gehört{% else %}{{ verkaeufe | length }} Einnahmen „Verkauf eines
+  Anlageguts“ gehören{% endif %} noch zu keinem Gut. Solange der Abgang fehlt, läuft die AfA
+  weiter, und der Restbuchwert fehlt als Ausgabe. Beim Gut unter „Abgang“ die Einnahme als
+  Erlös wählen — dann zählt er nur einmal.
+  <ul>{% for v in verkaeufe %}<li>Einnahme {{ v.id }}: {{ v.zahler }}, {{ v.betrag_cent | euro }} €
+    am {{ v.zufluss_am | datum_de }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if offene_belege %}
+<div class="meldung warn">
+  <strong>{% if offene_belege | length == 1 %}1 Beleg ist als Anlagegut markiert, hat aber
+  noch keinen Eintrag im Verzeichnis.{% else %}{{ offene_belege | length }} Belege sind als
+  Anlagegut markiert, haben aber noch keinen Eintrag im Verzeichnis.{% endif %}</strong>
+  Ohne Eintrag fehlt die AfA in der EÜR — und das fällt erst im Jahresabschluss auf.
+  <ul>
+    {% for b in offene_belege %}
+      <li>{{ b.belegdatum | datum_de }} · {{ b.lieferant or 'ohne Lieferant' }} ·
+        {{ b.betrag_brutto_cent | euro }} € brutto
+        {# Alles vom Beleg mitnehmen -- auch Netto, Steuersatz und den
+           betrieblichen Anteil. Vorher kamen nur Brutto und Datum, und das
+           Formular rechnete mit seiner Vorgabe von 19 %: der Nettowert eines
+           Reverse-Charge- oder Kleinunternehmer-Belegs war damit falsch, und
+           an ihm haengt die Wertgrenze. #}
+        <a href="#neu" onclick="document.querySelector('[name=beleg_id]').value={{ b.id }};
+           document.querySelector('[name=brutto_euro]').value='{{ b.betrag_brutto_cent | euro }}';
+           document.querySelector('[name=netto_euro]').value='{{ (b.betrag_netto_cent | euro) if b.betrag_netto_cent else '' }}';
+           document.querySelector('[name=ust_satz]').value='{{ ('%g' | format(b.ust_satz_promille / 10)) if b.ust_satz_promille is not none else '0' }}';
+           document.querySelector('[name=aufteilungsquote]').value='{{ b.aufteilungsquote }}';
+           document.querySelector('[name=anschaffung_am]').value='{{ b.belegdatum }}';">übernehmen</a>
+        {%- if b.aufteilungsquote != 100 %} <span class="gedaempft">({{ b.aufteilungsquote }} % betrieblich)</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if belege_ohne_gut %}
+<div class="meldung warn">
+  <strong>{% if belege_ohne_gut | length == 1 %}1 bezahlter Beleg in der Anlagekategorie ist
+    nicht als Anlagegut erfasst — er steht mit vollem Betrag in KZ {{ belege_ohne_gut[0].kennzahl }}.
+    {%- else %}{{ belege_ohne_gut | length }} bezahlte Belege in der Anlagekategorie sind nicht
+    als Anlagegut erfasst — sie stehen mit vollem Betrag in KZ 130.{% endif %}</strong>
+  Über 800 € netto gibt es keinen Sofortabzug: das Gut gehört ins Verzeichnis und wird
+  abgeschrieben. Der Haken „Anlagegut“ gehört beim Buchen in der Prüfmaske gesetzt —
+  dann erscheint der Beleg oben zum Übernehmen. Für einen schon gebuchten Beleg lässt
+  er sich im Werkzeug noch nicht nachtragen; das Anlagegut unten ohne den Beleg
+  aufzunehmen zählte den Betrag doppelt.
+  <ul>
+    {% for b in belege_ohne_gut %}
+      <li>{{ b.belegdatum | datum_de }} · {{ b.lieferant or 'ohne Lieferant' }} ·
+        {{ b.betrag_brutto_cent | euro }} € brutto ·
+        <a href="/belege?kategorie={{ b.kategorie_id }}">in der Belegliste</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# "nicht-drucken": das Erfassungsformular ergibt auf Papier nur eine leere
+   Ueberschrift -- gedruckt wird das Verzeichnis, nicht die Eingabemaske. #}
+<div class="nicht-drucken">
+<h2 id="neu">Anlagegut aufnehmen</h2>
+<form method="post" action="/anlagen">
+  <input type="hidden" name="beleg_id" value="">
+  <div class="felder">
+    <label>Bezeichnung <input name="bezeichnung" required maxlength="120"
+      placeholder="MacBook Pro 14"></label>
+    <label>Angeschafft am <input type="date" name="anschaffung_am" required
+      min="2000-01-01" max="{{ heute }}" value="{{ heute }}"></label>
+    <label>Brutto <small>der Buchungswert</small>
+      <input name="brutto_euro" inputmode="decimal" required placeholder="2.856,00"></label>
+    <label>Netto <small>leer = aus dem Steuersatz gerechnet</small>
+      <input name="netto_euro" inputmode="decimal" placeholder="2.400,00"></label>
+    <label>Steuersatz in Prozent <small>0 bei Kleinunternehmer-Lieferant oder
+      Reverse Charge</small>
+      <input name="ust_satz" inputmode="decimal" value="19"></label>
+  </div>
+  <div class="felder">
+    <label>Art
+      <select name="art">
+        <option value="BEWEGLICH">bewegliches Wirtschaftsgut (KZ 130)</option>
+        <option value="IMMATERIELL">immaterielles Wirtschaftsgut, z. B. Lizenz (KZ 131)</option>
+      </select></label>
+    <label>Nutzungsdauer in Jahren <small>nur bei linearer Abschreibung nötig</small>
+      <input type="number" name="nutzungsdauer_jahre" min="1" max="50"
+             list="nutzungsdauern"></label>
+    <label>Betrieblicher Anteil in Prozent <small>aus dem Beleg; nur dieser Anteil der
+        AfA geht in die EÜR</small>
+      <input type="number" name="aufteilungsquote" min="0" max="100" value="100"></label>
+  </div>
+  <datalist id="nutzungsdauern">
+    {% for bezeichnung, jahre in nutzungsdauern.items() %}
+      <option value="{{ jahre }}">{{ bezeichnung }}: {{ jahre }} {{ 'Jahr' if jahre == 1 else 'Jahre' }}</option>
+    {% endfor %}
+  </datalist>
+  <label class="zeile"><input type="checkbox" name="ist_it" value="1">
+    Computerhardware oder Anwendersoftware — darf mit Nutzungsdauer 1 Jahr im
+    Anschaffungsjahr voll abgezogen werden, gehört aber <em>trotzdem</em> ins
+    Verzeichnis</label>
+  <label>Notiz <textarea name="notiz" rows="2"></textarea></label>
+  <button type="submit">Aufnehmen und AfA rechnen</button>
+</form>
+</div>
+
+<h2>Bestand und Abschreibung</h2>
+<form method="get" action="/anlagen" class="zeile nicht-drucken">
+  <label>Jahr
+    <select name="jahr">
+      {% for j in jahre %}
+        <option value="{{ j }}" {% if j == jahr %}selected{% endif %}>{{ j }}</option>
+      {% endfor %}
+    </select></label>
+  <button type="submit">Anzeigen</button>
+</form>
+
+{% if eintraege %}
+<table>
+  <thead><tr><th>Bezeichnung</th><th>Angeschafft</th><th>KZ</th>
+    <th class="zahl">AK brutto</th><th class="zahl">AK netto</th>
+    <th class="zahl">AfA {{ jahr }}</th><th class="zahl">Restwert</th><th class="nicht-drucken"></th></tr></thead>
+  <tbody>
+  {% for e in eintraege %}
+    <tr {% if not e.im_bestand %}class="inaktiv"{% endif %}>
+      <td>{{ e.bezeichnung }}
+        {%- if e.methode == 'GWG_SOFORT' %}<br><span class="chip">GWG, sofort abgezogen</span>
+        {%- elif e.methode == 'EIN_JAHR_IT' %}<br><span class="chip">IT, 1 Jahr</span>
+        {%- else %}<br><span class="gedaempft">linear über {{ e.nutzungsdauer_jahre }}
+          {{ 'Jahr' if e.nutzungsdauer_jahre == 1 else 'Jahre' }}</span>{% endif %}
+        {%- if e.abgang_am %}<br><span class="chip storniert">Abgang
+          {{ e.abgang_am | datum_de }}: {{ e.abgang_grund }}</span>{% endif %}
+        {%- if e.notiz %}<br><span class="gedaempft">{{ e.notiz }}</span>{% endif %}</td>
+      <td class="mono">{{ e.anschaffung_am | datum_de }}</td>
+      <td class="mono">{{ e.kennzahl }}</td>
+      <td class="zahl mono">{{ e.ak_brutto_cent | euro }} €</td>
+      <td class="zahl mono">{{ e.ak_netto_cent | euro }} €</td>
+      <td class="zahl mono">{% if e.afa_dieses_jahr_cent %}{{ e.afa_dieses_jahr_cent | euro }} €
+        {%- if e.aufteilungsquote != 100 %}<br><span class="gedaempft">davon betrieblich
+          {{ e.afa_dieses_jahr_betrieblich_cent | euro }} € ({{ e.aufteilungsquote }} %)</span>{% endif %}
+        {%- else %}—{% endif %}</td>
+      <td class="zahl mono">{{ e.restwert_cent | euro }} €
+        {%- if e.restbuchwert_abgang_cent %}<br><span class="gedaempft">Restbuchwert beim Abgang
+          {{ e.restbuchwert_abgang_cent | euro }} € → Betriebsausgabe</span>{% endif %}</td>
+      <td class="aktionen nicht-drucken">
+        {% if not e.abgang_am and e.methode == 'LINEAR' %}
+        <details>
+          <summary>Nutzungsdauer</summary>
+          <form method="post" action="/anlagen/{{ e.id }}/nutzungsdauer">
+            <p class="hinweis">Die AfA-Reihe wird neu gerechnet — nur, solange sich dabei kein
+              zurückliegendes Jahr ändert.</p>
+            <label>Jahre <input type="number" name="jahre" min="1" max="50" required
+              value="{{ e.nutzungsdauer_jahre }}"></label>
+            <button type="submit" class="leise">Neu rechnen</button>
+          </form>
+        </details>
+        {% endif %}
+        {% if not e.abgang_am %}
+        <details>
+          <summary>Abgang</summary>
+          <form method="post" action="/anlagen/{{ e.id }}/abgang">
+            <label>Am <input type="date" name="am" required min="2000-01-01"
+              max="{{ heute }}"></label>
+            <label>Grund <input name="grund" required
+              placeholder="verkauft, entnommen, defekt"></label>
+            <label>Erlös <input name="erloes_euro" inputmode="decimal"
+              placeholder="0,00"></label>
+            {% if verkaeufe %}
+            <label>Erlös schon als Einnahme erfasst?
+              <select name="erloes_einnahme">
+                <option value="">— nein —</option>
+                {% for v in verkaeufe %}
+                <option value="{{ v.id }}">Einnahme {{ v.id }}: {{ v.zahler }}, {{ v.betrag_cent | euro }} € am {{ v.zufluss_am | datum_de }}</option>
+                {% endfor %}
+                <option value="neu">nein, ein anderer Verkauf (Erlös oben)</option>
+              </select>
+              <small>Dann zählt der Erlös nur einmal (KZ 102); das Feld „Erlös“ leer lassen.</small></label>
+            {% endif %}
+            <button type="submit">Abgang erfassen</button>
+          </form>
+        </details>
+        {% else %}
+        <details>
+          <summary>Abgang zurücknehmen</summary>
+          <form method="post" action="/anlagen/{{ e.id }}/abgang/zurueck">
+            <p class="hinweis">Für den Tippfehler im Datum oder den Verkauf, der nicht
+              zustande kam. Die Abschreibungsreihe wird wieder vollständig; der Abgang
+              bleibt im Journal nachvollziehbar.</p>
+            <label>Grund <input name="grund" required placeholder="Datum vertippt"></label>
+            <button type="submit" class="still">Zurücknehmen</button>
+          </form>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>AfA {{ jahr }} für die EÜR</h2>
+{% if afa_summe %}
+<table>
+  <thead><tr><th>Kennzahl</th><th>Bezeichnung</th><th class="zahl">Betrag</th></tr></thead>
+  <tbody>
+  {% for kz, betrag in afa_summe | dictsort %}
+    <tr>
+      <td class="mono">{{ kz }}</td>
+      <td>{% if kz == 130 %}Abschreibung auf bewegliche Wirtschaftsgüter
+          {%- elif kz == 131 %}Abschreibung auf immaterielle Wirtschaftsgüter
+          {%- elif kz == 132 %}Sofortabschreibung geringwertiger Wirtschaftsgüter
+          {%- else %}—{% endif %}</td>
+      <td class="zahl mono">{{ betrag | euro }} €</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Für {{ jahr }} fällt keine Abschreibung an.</p>
+{% endif %}
+
+<h2>GWG-Verzeichnis {{ jahr }}</h2>
+<p class="hinweis">§ 6 Abs. 2 Satz 4 EStG verlangt für geringwertige Wirtschaftsgüter ab
+  {{ verzeichnis_ab | euro }} € netto eine gesonderte Aufzeichnung: Tag der Anschaffung
+  und Anschaffungskosten. Auch wenn der Betrag sofort abgezogen wird — genau deshalb
+  wird es vergessen.</p>
+{% if gwg %}
+<table>
+  <thead><tr><th>Tag der Anschaffung</th><th>Bezeichnung</th>
+    <th class="zahl">Anschaffungskosten brutto</th><th class="zahl">netto</th></tr></thead>
+  <tbody>
+  {% for g in gwg %}
+    <tr><td class="mono">{{ g.anschaffung_am | datum_de }}</td>
+      <td>{{ g.bezeichnung }}</td>
+      <td class="zahl mono">{{ g.ak_brutto_cent | euro }} €</td>
+      <td class="zahl mono">{{ g.ak_netto_cent | euro }} €</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="leer">Keine aufzeichnungspflichtigen GWG in {{ jahr }}.</p>
+{% endif %}
+{% else %}
+<p class="leer">Noch kein Anlagegut erfasst.</p>
+{% endif %}
+
+<h2>Bewusst nicht gebaut: der Sammelposten</h2>
+<p class="hinweis">Die Poolabschreibung nach § 6 Abs. 2a EStG ist eine Falle: die Wahl
+  gilt <strong>einheitlich für alle</strong> Wirtschaftsgüter des Jahres und senkt die
+  Sofortabzugsgrenze von {{ grenze_netto | euro }} € auf {{ verzeichnis_ab | euro }} €.
+  Wer sie für ein Gut nimmt, bindet sich fürs ganze Jahr. Ein Werkzeug, das beides
+  anbietet, verleitet zu einer Wahl, deren Nebenwirkung niemand sieht.</p>
+{% endblock %}

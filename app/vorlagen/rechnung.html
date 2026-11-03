@@ -1,0 +1,613 @@
+{% extends "basis.html" %}
+{% set aktiv = 'rechnungen' %}
+{% block titel %}{{ r.nummer or 'Entwurf' }} · Steuer-Tool{% endblock %}
+{% block inhalt %}
+
+<h1>{{ r.nummer or 'Rechnungsentwurf' }}
+  <span class="chip {{ r.chip | lower }}">{{ r.chip | status_text }}</span>
+  {%- if r.ueberfaellig and r.chip != 'UEBERFAELLIG' %}
+  <span class="chip ueberfaellig">{{ r.tage_ueber_faellig }} Tage über</span>{% endif %}</h1>
+{# Der Empfaenger, wie er auf dem Papier steht: beim Entwurf der Stamm, danach
+   der Schnappschuss. Heisst der Kunde inzwischen anders, steht das dabei. #}
+<p class="hinweis">{{ empfaenger.name }}
+  {%- if r.status != 'ENTWURF' and kunde and kunde.name != empfaenger.name %}
+  <span class="gedaempft">(heute: {{ kunde.name }})</span>{% endif %} · {{ r.datum | datum_de }}
+  {%- if r.leistung_von %} · Leistung {{ r.leistung_von | datum_de }}
+  – {{ r.leistung_bis | datum_de }}{% endif %}</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if hinweis %}<div class="meldung warn">{{ hinweis }}</div>{% endif %}
+{% if dublette %}
+<div class="meldung warn nicht-drucken" id="dublette" role="alert">
+  <strong>Vermutlich schon als Einnahme erfasst</strong> — die Zahlung über
+  {{ dublette.betrag_euro }} € vom {{ dublette.datum | datum_de }} zählte sonst doppelt in EÜR
+  und § 19-Umsatz. Noch ist nichts gebucht.
+  <form method="post" action="/rechnung/{{ r.id }}/zahlung">
+    <input type="hidden" name="datum" value="{{ dublette.datum }}">
+    <input type="hidden" name="betrag_euro" value="{{ dublette.betrag_euro }}">
+    <input type="hidden" name="art" value="{{ dublette.art }}">
+    <input type="hidden" name="erwartet_bezahlt" value="{{ dublette.erwartet_bezahlt }}">
+    <input type="hidden" name="zurueck" value="{{ dublette.zurueck }}">
+    {% for z in dublette.aehnliche %}
+    <label class="zeile"><input type="radio" name="dublette_einnahme" value="{{ z.id }}"
+      {% if loop.first %}checked{% endif %}> {{ beschreibung(z) }}</label>
+    {% endfor %}
+    <button type="submit" name="dublette" value="ersetzen">Zahlung buchen und diese Einnahme
+      ersetzen</button>
+    <button type="submit" name="dublette" value="zusaetzlich" class="leise">Andere Zahlung —
+      zusätzlich buchen</button>
+  </form>
+</div>
+{% endif %}
+
+{% if original %}<p class="hinweis">Storno zu
+  <a href="/rechnung/{{ original.id }}">{{ original.nummer }}</a>.
+  {% if r.storno_grund %}Grund: {{ r.storno_grund }}{% endif %}</p>
+  {% if original.bezahlt_cent > 0 %}
+  <div class="meldung warn">Das Original {{ original.nummer }} ist mit
+    {{ original.bezahlt_cent | euro }} € bezahlt und das Geld noch nicht zurück.
+    <a href="/rechnung/{{ original.id }}">Rückzahlung dort erfassen</a> — bis dahin zählt der
+    Betrag weiter in EÜR und § 19-Umsatz.</div>
+  {% endif %}{% endif %}
+{% if storniert_von %}<div class="meldung warn">Diese Rechnung wurde storniert mit
+  <a href="/rechnung/{{ storniert_von.id }}">{{ storniert_von.nummer }}</a>.</div>{% endif %}
+
+{# ---------------------------------------------- Rechnungsablauf: die Kette
+   "Korrigieren" verbindet drei Dokumente: die ersetzte Rechnung, ihre
+   Rechnungskorrektur und die Ersatzrechnung. Jede der Seiten nennt die
+   anderen -- auf der Rechnungskorrektur steht der Weg zum neuen Entwurf. #}
+{% if ersetzt %}<p class="hinweis kette">Ersetzt Rechnung
+  <a href="/rechnung/{{ ersetzt.id }}">{{ ersetzt.nummer }}</a> vom {{ ersetzt.datum | datum_de }}
+  {%- if ersetzt.storno_nummer %} (storniert mit
+  <a href="/rechnung/{{ ersetzt.storno_id }}">{{ ersetzt.storno_nummer }}</a>){% endif %}.
+  {%- if r.status == 'ENTWURF' %} Der Verweis steht auch auf dem PDF.{% endif %}</p>{% endif %}
+{% for n in ersetzt_durch %}<p class="hinweis kette">Ersetzt durch
+  <a href="/rechnung/{{ n.id }}">{{ n.nummer or 'den neuen Entwurf' }}</a>
+  {%- if n.status == 'ENTWURF' %} (noch nicht festgeschrieben){% endif %}.</p>{% endfor %}
+
+{# Rechnungsablauf: der Entwurf sagt oben, dass er noch keine Nummer hat und
+   ohne Spur geloescht werden kann -- zwei Schritte ohne Skript: aufklappen,
+   bestaetigen. #}
+{% if r.status == 'ENTWURF' %}
+<div class="entwurfkopf nicht-drucken">
+  <p class="hinweis">Ein Entwurf hat noch keine Nummer; Löschen hinterlässt keine Lücke.</p>
+  <details class="loeschen">
+    <summary>Entwurf löschen</summary>
+    <form method="post" action="/rechnung/{{ r.id }}/verwerfen">
+      <p class="hinweis">{% if zeiten | length == 0 %}Es sind keine Zeiten zugeordnet.
+        {%- elif zeiten | length == 1 %}Die zugeordnete Zeit wird wieder frei.
+        {%- else %}Die {{ zeiten | length }} zugeordneten Zeiten werden wieder frei.{% endif %}
+        {%- if ersetzt %} {{ ersetzt.nummer }} bleibt storniert.{% endif %}</p>
+      <button type="submit" class="still">Ja, Entwurf löschen</button>
+    </form>
+  </details>
+</div>
+{% if satz_eingefroren %}
+{# Nach Korrigieren, Storno oder Zuruecknehmen tragen die Zeiten den Satz der
+   alten Rechnung -- auch wenn er der Fehler war. Der Entwurf sagt das, und
+   die Neuberechnung ist ein bewusster, protokollierter Klick. #}
+<div class="meldung warn">
+  Die Stundenpositionen rechnen mit {{ satz_eingefroren.text }} — dem Satz der
+  {% if ersetzt %}ersetzten Rechnung {{ ersetzt.nummer }}{% else %}früheren Rechnung{% endif %}.
+  Am Kunden steht heute {{ satz_eingefroren.kunde | euro }} €.
+  <form method="post" action="/rechnung/{{ r.id }}/satz" class="inline">
+    <button type="submit" class="leise">Mit {{ satz_eingefroren.kunde | euro }} € neu berechnen</button>
+  </form>
+</div>
+{% endif %}
+{% endif %}
+
+{# ------------------------------------------ Rechnungsablauf: Ablaufleiste
+   Festgeschrieben -> versendet -> bezahlt, oben und auf einen Blick. Die
+   Formulare stehen HIER und nur hier (nicht doppelt weiter unten).
+   "Bezahlt" ist kein Schalter: der Status folgt aus der erfassten Zahlung,
+   und deren Datum zaehlt fuer EUeR und § 19-Umsatz -- deshalb nie ein
+   Ein-Klick ohne Datum. #}
+{% if r.status == 'FESTGESCHRIEBEN' %}
+<ol class="ablauf nicht-drucken">
+  <li class="erledigt"><strong>Festgeschrieben am
+    {{ (r.festgeschrieben_am | zeit_lokal)[:10] }}.</strong></li>
+  {# Versendet wird ein festgeschriebenes Dokument -- auch die
+     Rechnungskorrektur, die dem Kunden ebenso zugehen muss (der Mail-Link
+     unten bietet sie an). #}
+  <li class="{{ 'erledigt' if r.versendet_am else 'offen' }}">
+    {% if r.versendet_am %}
+    <strong>Versendet am {{ r.versendet_am | datum_de }}.</strong>
+    <details>
+      <summary>ändern oder zurücknehmen</summary>
+      <form method="post" action="/rechnung/{{ r.id }}/versendet" class="zeile">
+        <label>Neues Versanddatum
+          <input name="datum" type="date" value="{{ r.versendet_am }}" required></label>
+        <label>Grund <input name="grund" required placeholder="z. B. Tippfehler im Datum"></label>
+        <button type="submit" class="leise">Datum ändern</button>
+      </form>
+      <form method="post" action="/rechnung/{{ r.id }}/versendet/zuruecknehmen" class="zeile">
+        <label>Grund <input name="grund" required placeholder="z. B. doch nicht verschickt"></label>
+        <button type="submit" class="leise">Vermerk zurücknehmen</button>
+      </form>
+      <p class="hinweis">Altes Datum und Grund stehen im Protokoll.
+        {%- if r.typ == 'RECHNUNG' %} Ohne Versandvermerk und ohne Zahlung lässt sich eine
+        Rechnung wieder zurücknehmen.{% endif %}</p>
+    </details>
+    {% else %}
+    <strong>Versendet?</strong>
+    <form method="post" action="/rechnung/{{ r.id }}/versendet" class="zeile">
+      <input name="datum" type="date" value="{{ heute }}" aria-label="Versanddatum">
+      <button type="submit" class="leise">Als versendet vermerken</button>
+    </form>
+    {% endif %}
+  </li>
+  {% if r.typ == 'RECHNUNG' and r.brutto_cent > 0 %}
+  <li class="{{ 'erledigt' if r.zahlstatus == 'BEZAHLT' else 'offen' }}">
+    {% if r.zahlstatus == 'BEZAHLT' %}
+    <strong>Bezahlt{% if r.letzte_zahlung %} am {{ r.letzte_zahlung | datum_de }}{% endif %}.</strong>
+    {% else %}
+    <strong>{% if r.bezahlt_cent > 0 %}Teilweise bezahlt: {{ r.bezahlt_cent | euro }} € erhalten,
+      {{ r.offen_cent | euro }} € offen.{% else %}Bezahlt?{% endif %}</strong>
+    <form method="post" action="/rechnung/{{ r.id }}/zahlung" class="zeile nicht-drucken">
+      {# Der Stand beim Laden der Seite. Weicht er beim Buchen ab, war die Seite
+         veraltet -- der Doppelklick bucht den Rest sonst zweimal. #}
+      <input type="hidden" name="erwartet_bezahlt" value="{{ r.bezahlt_cent }}">
+      <label>Geldeingang am
+        <input name="datum" type="date" value="{{ heute }}" required></label>
+      <label>Betrag in €
+        <input name="betrag_euro" placeholder="{{ r.offen_cent | euro }}" size="10">
+        <small>leer = offener Rest ({{ r.offen_cent | euro }} €)</small></label>
+      <label>Art
+        <select name="art">
+          {% for a in ['UEBERWEISUNG','KARTE','BAR','PAYPAL','SONSTIGES'] %}
+          <option value="{{ a }}">{{ a | status_text }}</option>{% endfor %}
+        </select></label>
+      <button type="submit">Als bezahlt erfassen</button>
+    </form>
+    {% endif %}
+    <p class="hinweis">„Bezahlt“ ergibt sich aus der erfassten Zahlung. Ihr Datum ist der Tag
+      des Geldeingangs: er zählt für die EÜR (§ 11 EStG) und den § 19-Umsatz — nicht das
+      Rechnungsdatum.</p>
+  </li>
+  {% endif %}
+</ol>
+{% endif %}
+
+{# Zwei Faelle, ein Ausweg: kein Pfad in der Datenbank (Rendering gescheitert)
+   oder ein Pfad, hinter dem keine Datei mehr liegt (auf der Platte geloescht).
+   Beide brauchen den Knopf -- vorher fuehrte im zweiten Fall "PDF oeffnen"
+   ins Leere, und einen Weg zum Neu-Erzeugen gab es nicht. #}
+{% if r.status != 'ENTWURF' and (not r.pdf_pfad or pdf_fehlt) %}
+<div class="meldung fehler">
+  {% if pdf_fehlt %}
+  <strong>Die PDF-Datei fehlt auf der Platte.</strong> Sie wurde erzeugt, liegt aber nicht
+  mehr unter <code>{{ r.pdf_pfad }}</code>. Die {{ dokumenttitel }} selbst ist gültig und
+  die Nummer vergeben.
+  {% else %}
+  <strong>Diese {{ dokumenttitel }} hat kein PDF.</strong> Das Rendering ist fehlgeschlagen;
+  die {{ dokumenttitel }} selbst ist gültig und die Nummer vergeben.
+  {% endif %}
+  <form method="post" action="/rechnung/{{ r.id }}/pdf" class="inline">
+    <button type="submit">PDF jetzt erzeugen</button></form>
+</div>
+{% endif %}
+
+<table>
+  <thead><tr><th class="nr">Pos.</th><th>Leistung</th><th class="zahl">Menge</th>
+    <th>Einheit</th><th class="zahl">Einzelpreis</th><th class="zahl">Betrag</th></tr></thead>
+  <tbody>
+  {% if not positionen %}
+    <tr><td colspan="6" class="gedaempft">Noch keine Position — unten „Freie Position
+      hinzufügen“.</td></tr>
+  {% endif %}
+  {% for p in positionen %}
+    <tr>
+      <td class="gedaempft">{{ p.pos_nr }}</td>
+      <td>{{ p.bezeichnung }}
+        {#- "beschreibung": white-space pre-line wie im PDF -- mehrzeilige
+            Beschreibungen kollabierten hier sonst zu einer Zeile. #}
+        {%- if p.untertext %}<br><span class="gedaempft beschreibung">{{ p.untertext }}</span>{% endif %}
+        {%- if p.nachlass_cent %}<br><span class="gedaempft beschreibung">{{ p.nachlass_grund }}
+          – nicht berechnet</span>{% endif %}
+        {#- Eine freie Position haengt an keiner Zeit: im Entwurf laesst sie
+            sich hier wieder entfernen (Zeitpositionen nur ueber die Zeiten). #}
+        {%- if p.quelle == 'FREI' and r.status == 'ENTWURF' %}
+        <form method="post" action="/rechnung/{{ r.id }}/position/{{ p.id }}/loeschen"
+              class="inline nicht-drucken">
+          <button type="submit" class="still">Position entfernen</button></form>{% endif %}</td>
+      {# Eine Pauschale wie auf dem PDF: ohne Menge und Einzelpreis. "1,00
+         pausch. 636,46" behauptete eine Mengenrechnung, die es nicht gibt. #}
+      {% if p.darstellung == 'NUR_TEXT' %}
+      <td class="zahl mono"></td>
+      <td>Pauschale</td>
+      <td class="zahl mono"></td>
+      {% else %}
+      <td class="zahl mono">{{ p.menge_tausendstel | menge }}</td>
+      <td>{{ p.einheit | einheit_de }}</td>
+      <td class="zahl mono">{{ p.einzelpreis_cent | euro }}</td>
+      {% endif %}
+      <td class="zahl mono">{% if p.nachlass_cent and p.betrag_cent == 0 %}—{% else %}
+        {{ p.betrag_cent | euro }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="5" class="zahl">Gesamtbetrag</th>
+    <th class="zahl mono">{{ r.brutto_cent | euro }} €</th></tr></tfoot>
+</table>
+<p class="hinweis">Keine Umsatzsteuer: {{ r.hinweis_19_text }}</p>
+
+{% if r.status == 'ENTWURF' %}
+
+{# Freie Position: ein Betrag ohne Zeiteintrag -- die Affiliate-Provision zum
+   Monatsende, eine Pauschale, eine Auslage. Sie bleibt bei jeder
+   Neuberechnung der Zeitpositionen stehen (app/logik/festschreiben.py). #}
+<h2 class="nicht-drucken" id="positionen">Freie Position hinzufügen</h2>
+<form method="post" action="/rechnung/{{ r.id }}/position" class="nicht-drucken freie-position">
+  <p class="hinweis">Für Beträge ohne Zeiterfassung, etwa eine Affiliate-Provision:
+    Betrag = Menge × Einzelpreis. „pauschal“ druckt die Zeile ohne Menge und Einzelpreis.</p>
+  <div class="felder">
+    <label>Leistung
+      <input name="bezeichnung" maxlength="200" required
+             value="{{ position_eingabe.bezeichnung if position_eingabe else '' }}"
+             placeholder="Affiliate-Provision Oktober 2026"></label>
+    <label>Menge
+      <input name="menge" inputmode="decimal" required
+             value="{{ position_eingabe.menge if position_eingabe else '1' }}"></label>
+    <label>Einheit
+      <select name="einheit">
+        {% for code, text in einheiten %}
+        <option value="{{ code }}"
+          {%- if (position_eingabe.einheit if position_eingabe else 'C62') == code %} selected{% endif %}>
+          {{ text }}</option>
+        {% endfor %}
+      </select></label>
+    <label>Einzelpreis (€)
+      <input name="einzelpreis" inputmode="decimal" required placeholder="250,00"
+             value="{{ position_eingabe.einzelpreis if position_eingabe else '' }}"></label>
+  </div>
+  <label>Beschreibung <small>optional, steht unter der Leistung — etwa die Herleitung
+      der Summe</small>
+    <textarea name="untertext" rows="2" maxlength="2000"
+      >{{ position_eingabe.untertext if position_eingabe else '' }}</textarea></label>
+  <button type="submit">Position hinzufügen</button>
+</form>
+
+{# Die PDF-Vorschau: dieselbe Vorlage und derselbe Renderer wie beim
+   Festschreiben, mit Wasserzeichen und ohne Nummer. Vorher sah man das PDF
+   erst, wenn Nummer und Archivexemplar schon unumkehrbar waren. Nach "Kopf
+   speichern" oder einer neuen Gruppierung laedt die Seite neu, die Vorschau
+   also auch (?v= und no-store). #}
+<section class="vorschau nicht-drucken" id="vorschau">
+  <h2>Vorschau</h2>
+  {% if vorschau_hindernis %}
+  <div class="meldung warn"><strong>Keine PDF-Vorschau möglich.</strong>
+    {{ vorschau_hindernis }}</div>
+  {% else %}
+  <p class="hinweis">So geht die Rechnung raus. Beim Festschreiben kommt nur die Nummer
+    dazu, das Wasserzeichen fällt weg.</p>
+  <p class="knopfzeile"><a class="knopf still" href="/rechnung/{{ r.id }}/vorschau.pdf?v={{ r.version }}"
+     target="_blank" rel="noopener">In neuem Tab öffnen</a></p>
+  {# "#view=FitH": der PDF-Betrachter des Browsers zeigt die Seite in voller
+     Breite statt verkleinert neben der Seitenleiste. #}
+  <iframe src="/rechnung/{{ r.id }}/vorschau.pdf?v={{ r.version }}#navpanes=0&amp;view=FitH"
+          title="PDF-Vorschau des Entwurfs"></iframe>
+  {% endif %}
+</section>
+
+<h2>Prüfung</h2>
+{% if naechste_nummer %}
+<p class="hinweis">Beim Festschreiben wird voraussichtlich die Nummer
+  <code>{{ naechste_nummer }}</code> vergeben — Vorschau für das Jahr des Rechnungsdatums.</p>
+{% endif %}
+{% if befunde.ROT %}
+<div class="meldung fehler">
+  <strong>{% if befunde.ROT | length == 1 %}1 Punkt blockiert das Festschreiben.
+    {%- else %}{{ befunde.ROT | length }} Punkte blockieren das Festschreiben.{% endif %}</strong>
+  <ul>{% for b in befunde.ROT %}<li>{{ b.text }}
+    {%- if b.fundstelle %} <span class="gedaempft">({{ b.fundstelle }})</span>{% endif %}</li>
+  {% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/rechnung/{{ r.id }}/festschreiben">
+  <input type="hidden" name="version" value="{{ r.version }}">
+  {% if befunde.GELB %}
+  <div class="meldung warn">
+    <strong>{% if befunde.GELB | length == 1 %}1 Hinweis — bitte abhaken.
+      {%- else %}{{ befunde.GELB | length }} Hinweise — bitte einzeln abhaken.{% endif %}</strong>
+    <p class="hinweis">Das Abhaken wird im Journal festgehalten.</p>
+    {% for b in befunde.GELB %}
+    <label class="abhaken"><input type="checkbox" name="bestaetigt" value="{{ b.code }}">
+      <span>{{ b.text }}{% if b.fundstelle %}
+        <span class="gedaempft">({{ b.fundstelle }})</span>{% endif %}</span></label>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% for b in befunde.BLAU %}<p class="hinweis">{{ b.text }}</p>{% endfor %}
+  {% if not befunde.ROT and not befunde.GELB %}
+  <p class="hinweis">Keine Auffälligkeiten.</p>{% endif %}
+
+  <button type="submit" {% if blockiert %}disabled{% endif %}>
+    Festschreiben und PDF erzeugen</button>
+  {% if blockiert %}<p class="hinweis">Erst wenn die roten Punkte behoben sind.</p>{% endif %}
+</form>
+
+{# "nicht-drucken": Bearbeitungsabschnitte ergeben auf Papier nur leere
+   Überschriften und Eingabefelder (Druckregel in stil.css). #}
+<h2 class="nicht-drucken">Gruppierung ändern</h2>
+<form method="post" action="/rechnung/{{ r.id }}/gruppierung" class="zeile">
+  <select name="modus" aria-label="Gruppierung">
+    {% for m in modi %}<option value="{{ m }}" {% if r.gruppierung == m %}selected{% endif %}>
+      {{ modus_text[m] }}</option>{% endfor %}
+  </select>
+  <button type="submit">Positionen neu erzeugen</button>
+</form>
+
+{# Die Rundung, mit der dieser Entwurf rechnet: eingefroren beim Anlegen.
+   Aendert sich die Regel am Kunden oder im Betrieb, wird nichts still
+   umgerechnet -- die Seite sagt es und bietet die Uebernahme an. #}
+{% if regel_entwurf %}
+<h2 class="nicht-drucken">Rundung</h2>
+<p class="hinweis nicht-drucken">{% if regel_entwurf.wirkt(r.gruppierung) %}Die Zeitsumme je
+  Position ist {{ regel_entwurf.text }} — Regel vom Anlegen des Entwurfs. Auf der Rechnung
+  steht: „{{ r.rundung_hinweis }}“
+  {%- else %}Abgerechnet wird minutengenau{% if r.gruppierung == 'PRO_EINTRAG' and regel_entwurf.rundet %}:
+  bei „pro Eintrag“ entfällt die Rundung{% endif %}. Auf der Rechnung steht kein Rundungssatz.
+  {%- endif %}</p>
+{% if regel_kunde and not regel_entwurf.gleich(regel_kunde) %}
+<div class="meldung warn nicht-drucken">Am Kunden gilt inzwischen: {{ regel_kunde.text }}
+  {%- if regel_kunde.quelle == 'BETRIEB' %} (Vorgabe des Betriebs){% endif %}. Dieser Entwurf
+  rechnet weiter mit der Regel vom Anlegen ({{ regel_entwurf.text }}) — umgerechnet wird nur
+  auf Klick.
+  <form method="post" action="/rechnung/{{ r.id }}/rundung" class="inline">
+    <button type="submit">Regel des Kunden übernehmen</button>
+  </form>
+</div>
+{% endif %}
+{% endif %}
+
+<h2 class="nicht-drucken">Kopf und Texte</h2>
+{# kopf: die Eingaben eines abgewiesenen Absendens (422); sonst der gespeicherte Stand. #}
+{% set k = kopf or {"datum": r.datum, "betreff": r.betreff, "einleitung": r.einleitung,
+   "schluss": r.schluss, "einzelnachweis": r.einzelnachweis,
+   "leistungszeitraum": r.leistungszeitraum_zeigen} %}
+<form method="post" action="/rechnung/{{ r.id }}/kopf">
+  <div class="felder">
+    <label>Rechnungsdatum <input name="datum" type="date" value="{{ k.datum or '' }}" required></label>
+  </div>
+  <label>Betreff <small>steht unter der Überschrift; keine Pflichtangabe — leer lassen
+      setzt den Vorschlag „Rechnung – Monat Jahr – Kunde“ neu</small>
+    <input name="betreff" value="{{ k.betreff or '' }}"></label>
+  <label>Einleitung <textarea name="einleitung" rows="2">{{ k.einleitung or '' }}</textarea></label>
+  <label>Schlusstext <textarea name="schluss" rows="2">{{ k.schluss or '' }}</textarea></label>
+  <label class="zeile"><input type="checkbox" name="einzelnachweis" value="1"
+    {% if k.einzelnachweis %}checked{% endif %}>
+    <span>Einzelnachweis als Anlage</span></label>
+  <label class="zeile"><input type="checkbox" name="leistungszeitraum" value="1"
+    {% if k.leistungszeitraum %}checked{% endif %}>
+    <span>Leistungszeitraum ausweisen <span class="gedaempft">{% if r.leistungsort == 'EU_B2B_REVERSE_CHARGE' %}(bei Reverse Charge
+      anzugeben: § 14a Abs. 1 i. V. m. § 14 Abs. 4 Nr. 6 UStG){% else %}(keine Pflichtangabe
+      nach § 34a UStDV){% endif %}</span></span></label>
+  <button type="submit">Speichern</button>
+</form>
+
+{% else %}
+
+<div class="nicht-drucken">
+<h2>Aktionen</h2>
+<p class="zeile">
+  {% if r.pdf_pfad and not pdf_fehlt %}<a class="knopf" href="/rechnung/{{ r.id }}/pdf">PDF öffnen</a>
+  <small><a href="/rechnung/{{ r.id }}/pdf?download=1">herunterladen</a></small>{% endif %}
+  {% if kunde.email %}
+  {# "anbei die Rechnungskorrektur": das Dokument heisst auf dem Papier so,
+     und der Mailtext soll nicht etwas anderes behaupten. #}
+  <a class="knopf still" href="mailto:{{ kunde.email }}?subject={{ r.nummer }}&body=Guten%20Tag,%0A%0Aanbei%20die%20{{ dokumenttitel | urlencode }}%20{{ r.nummer }}.%0A%0AMit%20freundlichen%20Gr%C3%BC%C3%9Fen">
+    Per Mail senden</a>{% endif %}
+</p>
+</div>
+{# Der Versandvermerk einer festgeschriebenen Rechnung steht in der
+   Ablaufleiste oben. Auf einer stornierten Rechnung gibt es kein Formular
+   mehr (der Klick bewirkte frueher nichts und meldete nichts), nur den
+   Vermerk. #}
+{% if r.status == 'STORNIERT' and r.versendet_am %}<p class="hinweis">Versendet am {{ r.versendet_am | datum_de }}.</p>{% endif %}
+
+{# ----------------------------------------- Rechnungsablauf: Etwas falsch?
+   Eine festgeschriebene Rechnung wird nicht geaendert, sondern ersetzt
+   (§ 146 Abs. 4 AO). Drei Wege, der haeufigste zuerst: Korrigieren (Storno
+   und neuer Entwurf in einem Schritt), Zuruecknehmen (nur solange niemand
+   sie erhalten hat), nur Stornieren. Ein Storno-Dokument selbst zu
+   stornieren waere sinnlos, und ein Leistungsnachweis rechnet kein Entgelt
+   ab -- deshalb nur bei einer Rechnung. #}
+{% if r.status == 'FESTGESCHRIEBEN' and r.typ == 'RECHNUNG' and not storniert_von %}
+<div class="nicht-drucken korrektur">
+<h2>Etwas falsch?</h2>
+<p class="hinweis">Eine festgeschriebene Rechnung lässt sich nicht mehr ändern: sie ist ein
+  Beleg, und § 146 Abs. 4 AO verlangt, dass ihr ursprünglicher Inhalt feststellbar bleibt. Sie
+  wird deshalb ersetzt. <strong>Korrigieren</strong> erledigt das in einem Schritt: diese Rechnung
+  wird mit einer Rechnungskorrektur (eigene Nummer) storniert, und sofort entsteht ein neuer
+  Entwurf mit denselben Positionen, Texten und Zeiten, Rechnungsdatum heute. Den änderst du und
+  schreibst ihn neu fest; er verweist auf diese Rechnung.</p>
+{% if r.bezahlt_cent > 0 %}
+<div class="meldung warn">Auf diese Rechnung sind {{ r.bezahlt_cent | euro }} € eingegangen. Die
+  Zahlung bleibt nach dem Korrigieren hier stehen — eine Umbuchung auf die neue Rechnung gibt es
+  nicht. Diese Seite zeigt danach „Rückzahlung offen“; bis eine Rückzahlung erfasst ist, zählt der
+  Betrag weiter in EÜR und § 19-Umsatz.</div>
+{% endif %}
+{% if r.versendet_am %}<p class="hinweis">Die Rechnung ist versendet: nach dem Korrigieren gehören
+  die Rechnungskorrektur und die neue Rechnung zum Kunden.</p>{% endif %}
+<form method="post" action="/rechnung/{{ r.id }}/korrigieren" class="zeile">
+  <label>Was ist falsch? <small>Pflicht — steht auf der Rechnungskorrektur und im Protokoll</small>
+    <input name="grund" required placeholder="z. B. falscher Stundensatz" size="34"></label>
+  <button type="submit">Korrigieren</button>
+</form>
+
+{% if ruecknahme and ruecknahme.moeglich %}
+{# Ausdrueckliche Entscheidung des Nutzers: solange die Rechnung niemand
+   erhalten hat, darf sie zurueck. Was mit der Nummer passiert, steht VOR dem
+   Bestaetigen da. #}
+<details class="ruecknahme">
+  <summary>Noch nicht verschickt? Rechnung zurücknehmen statt korrigieren</summary>
+  <form method="post" action="/rechnung/{{ r.id }}/zuruecknehmen">
+    <p class="hinweis">Solange niemand die Rechnung erhalten hat, lässt sie sich zurücknehmen —
+      ohne Rechnungskorrektur und ohne zweite Nummer.</p>
+    {% if ruecknahme.nummer_wird_frei %}
+    <p>Die Nummer <code>{{ ruecknahme.nummer }}</code> wird wieder frei: die nächste Rechnung
+      bekommt sie.</p>
+    {% else %}
+    <div class="meldung warn">Die Nummer <code>{{ ruecknahme.nummer }}</code> kann nicht wieder
+      vergeben werden, {% if ruecknahme.nachfolger %}weil {{ ruecknahme.nachfolger }} schon danach
+      vergeben wurde{% else %}weil der Zähler schon weitergezählt hat{% endif %}; sie wird als Lücke
+      mit deinem Grund vermerkt (<a href="/rechnungen/luecken">Nummernlücken</a>).</div>
+    {% endif %}
+    <fieldset>
+      <legend>Was soll aus der Rechnung werden?</legend>
+      <label class="zeile"><input type="radio" name="variante" value="ENTWURF" checked>
+        <strong>Zurück zum Entwurf</strong> — dieselben Positionen, Texte und Zeiten, ohne
+        Nummer. Du änderst und schreibst neu fest.</label>
+      <label class="zeile"><input type="radio" name="variante" value="LOESCHEN">
+        <strong>Ganz löschen</strong> — die Rechnung verschwindet
+        {%- if zeiten | length == 1 %}, die Zeit wird wieder frei
+        {%- elif zeiten %}, die {{ zeiten | length }} Zeiten werden wieder frei{% endif %}.</label>
+    </fieldset>
+    <label>Grund <small>Pflicht — steht im Protokoll{% if not ruecknahme.nummer_wird_frei %} und
+      in der Liste der Nummernlücken{% endif %}</small>
+      <input name="grund" required list="ruecknahme-gruende" placeholder="z. B. Testrechnung">
+      <datalist id="ruecknahme-gruende">{% for g in grund_vorschlaege %}
+        <option value="{{ g }}">{% endfor %}</datalist></label>
+    <label class="abhaken"><input type="checkbox" name="bestaetigt" value="1" required>
+      <span>{{ bestaetigung }}</span></label>
+    <p class="hinweis">Nichts verschwindet spurlos: der vollständige Inhalt steht im Protokoll, und
+      das PDF wird nicht gelöscht, sondern als „VERWORFEN“ unter
+      <code>ausgangsrechnungen/verworfen/</code> aufbewahrt.</p>
+    <button type="submit" class="leise">Rechnung zurücknehmen</button>
+  </form>
+</details>
+{% elif ruecknahme %}
+<p class="hinweis">Zurücknehmen statt korrigieren geht nicht mehr:
+  {{ ruecknahme.hindernisse | first }}</p>
+{% endif %}
+
+<details class="nur-stornieren">
+  <summary>Nur stornieren, ohne neuen Entwurf</summary>
+  <form method="post" action="/rechnung/{{ r.id }}/storno">
+    <p class="hinweis">Das Original bleibt erhalten, sein PDF bleibt im Ordner. Das Storno
+      ist ein eigenes Dokument mit eigener Nummer. Es heißt <em>nicht</em> „Gutschrift“ —
+      das bedeutet Abrechnung durch den Leistungsempfänger (§ 34a Satz 1 Nr. 6 UStDV).</p>
+    <div class="felder">
+      <label>Begründung <small>Pflicht</small>
+        <input name="grund" required placeholder="z. B. Tippfehler im Betrag"></label>
+      <label>Zeiten wieder freigeben
+        <select name="zeiten_freigeben">
+          <option value="1">ja — {% if zeiten | length == 1 %}1 Eintrag wird neu abrechenbar
+            {%- else %}{{ zeiten | length }} Einträge werden neu abrechenbar{% endif %}</option>
+          <option value="0">nein — {% if zeiten | length == 1 %}Eintrag bleibt gesperrt
+            {%- else %}Einträge bleiben gesperrt{% endif %}</option>
+        </select></label>
+    </div>
+    <button type="submit" class="still">Stornieren</button>
+  </form>
+</details>
+</div>
+{% endif %}
+
+{# Das Formular fuer den Zahlungseingang steht in der Ablaufleiste oben.
+   Hier: die gebuchten Zahlungen, ihre Ruecknahme, Rueckzahlung und
+   Rueckerstattung. #}
+{% if r.typ == 'RECHNUNG' and r.brutto_cent > 0 and zahlungen %}
+<h2>Zahlungen</h2>
+<table>
+  <thead><tr><th>Datum</th><th>Art</th><th class="zahl">Betrag</th>
+    <th class="nicht-drucken"></th></tr></thead>
+  {# Rechnungsablauf: eine Fehlbuchung wird durch eine Gegenbuchung zum
+     selben Datum aufgehoben. Beide Zeilen bleiben sichtbar, gedaempft. #}
+  <tbody>{% for z in zahlungen %}{% set gegen = zahlung_zurueckgenommen.get(z.id) %}
+    <tr{% if gegen or z.storno_von_id %} class="gedaempft"{% endif %}>
+    <td class="mono">{{ z.datum | datum_de }}</td>
+    <td>{{ z.art | status_text }}
+      {%- if z.storno_von_id %} · Rücknahme einer Fehlbuchung
+      {%- elif z.betrag_cent < 0 %} · Rückzahlung{% endif %}
+      {%- if gegen %} · zurückgenommen{% endif %}
+      {%- if z.notiz %}<br><span class="gedaempft beschreibung">{{ z.notiz }}</span>{% endif %}</td>
+    <td class="zahl mono">{{ z.betrag_cent | euro }} €</td>
+    <td class="aktionen nicht-drucken">{% if not gegen and not z.storno_von_id %}
+      <details>
+        <summary>Zurücknehmen</summary>
+        <form method="post" action="/rechnung/{{ r.id }}/zahlung/{{ z.id }}/zuruecknehmen">
+          <p class="hinweis">Für eine Fehlbuchung: eine Gegenbuchung zum selben Datum hebt die
+            Zahlung auf, beide bleiben sichtbar.
+            {%- if z.datum[:4] | int <= vorjahr %} <strong>Die Zahlung liegt im Jahr
+            {{ z.datum[:4] }}: die EÜR für {{ z.datum[:4] }} ist evtl. schon abgegeben und müsste
+            berichtigt werden.</strong>{% endif %}</p>
+          <input name="grund" required placeholder="Grund, z. B. falsch erfasst"
+                 aria-label="Grund der Rücknahme">
+          <button type="submit">Zahlung zurücknehmen</button>
+        </form>
+      </details>{% endif %}</td></tr>{% endfor %}</tbody>
+  {% if r.status == 'STORNIERT' %}
+  <tfoot><tr><th colspan="2" class="zahl">Eingegangen, noch nicht zurückgezahlt</th>
+    <th class="zahl mono">{{ r.bezahlt_cent | euro }} €</th><th></th></tr></tfoot>
+  {% elif r.offen_cent < 0 %}
+  {# Ueberzahlung: beim Namen nennen, nicht "Noch offen -50,00 €". #}
+  <tfoot><tr><th colspan="2" class="zahl">Zu viel erhalten</th>
+    <th class="zahl mono">{{ (-r.offen_cent) | euro }} €</th><th></th></tr></tfoot>
+  {% else %}
+  <tfoot><tr><th colspan="2" class="zahl">Noch offen</th>
+    <th class="zahl mono">{{ r.offen_cent | euro }} €</th><th></th></tr></tfoot>
+  {% endif %}
+</table>
+{% if r.status == 'STORNIERT' %}
+  {% if r.bezahlt_cent > 0 %}
+  {# Das Storno nimmt das Geld nicht zurueck. Bis die Rueckzahlung erfasst
+     ist, stehen die Euro weiter in der EUeR und im § 19-Gesamtumsatz. #}
+  <div class="meldung warn nicht-drucken">
+    <strong>{{ r.bezahlt_cent | euro }} € sind eingegangen und noch nicht zurückgezahlt.</strong>
+    Solange die Rückzahlung nicht erfasst ist, zählt der Betrag weiter als Betriebseinnahme
+    (§ 11 EStG) und im § 19-Umsatz.
+  </div>
+  <form method="post" action="/rechnung/{{ r.id }}/rueckzahlung" class="zeile nicht-drucken">
+    <input name="datum" type="date" value="{{ heute }}" required aria-label="Rückzahlungsdatum">
+    <input name="betrag_euro" placeholder="{{ r.bezahlt_cent | euro }}" size="10"
+           aria-label="Betrag" title="leer = alles, was eingegangen ist">
+    <select name="art" aria-label="Zahlungsart">
+      {% for a in ['UEBERWEISUNG','KARTE','BAR','PAYPAL','SONSTIGES'] %}
+      <option value="{{ a }}">{{ a | status_text }}</option>{% endfor %}
+    </select>
+    <button type="submit">Rückzahlung erfassen</button>
+  </form>
+  {% elif zahlungen %}
+  <p class="hinweis">Eingegangen und vollständig zurückgezahlt.</p>
+  {% endif %}
+{% elif r.offen_cent < 0 %}
+{# Der Kunde hat zu viel gezahlt. Der Zufluss steht zu Recht in der EUeR
+   (§ 11 EStG); die Rueckerstattung der Differenz ist eine negative Zahlung
+   auf dieser Rechnung -- hoechstens in Hoehe der Ueberzahlung. #}
+<div class="meldung warn nicht-drucken">
+  <strong>{{ (-r.offen_cent) | euro }} € zu viel erhalten.</strong>
+  Bis die Rückerstattung erfasst ist, zählt der Betrag weiter als Betriebseinnahme
+  (§ 11 EStG) und im § 19-Umsatz.
+</div>
+<form method="post" action="/rechnung/{{ r.id }}/zahlung" class="zeile nicht-drucken">
+  <input type="hidden" name="erwartet_bezahlt" value="{{ r.bezahlt_cent }}">
+  <input type="hidden" name="rueckerstattung" value="1">
+  <input name="datum" type="date" value="{{ heute }}" required aria-label="Rückerstattungsdatum">
+  <input name="betrag_euro" placeholder="{{ (-r.offen_cent) | euro }}" size="10"
+         aria-label="Betrag" title="leer = die ganze Überzahlung">
+  <select name="art" aria-label="Zahlungsart">
+    {% for a in ['UEBERWEISUNG','KARTE','BAR','PAYPAL','SONSTIGES'] %}
+    <option value="{{ a }}">{{ a | status_text }}</option>{% endfor %}
+  </select>
+  <button type="submit">Rückerstattung erfassen</button>
+</form>
+{% endif %}
+{% endif %}
+
+{% endif %}
+
+{% if zeiten %}
+<h2>Zugeordnete Zeiten <span class="gedaempft">{{ zeiten | sum(attribute='dauer_minuten') | dauer }}</span></h2>
+<table>
+  <tbody>{% for z in zeiten %}
+    <tr><td class="mono">{{ z.datum | datum_de }}</td><td>{{ z.titel }}</td>
+      <td class="zahl mono">{{ z.dauer_minuten | dauer }}</td>
+      <td>{% if z.abrechnungsmodus != 'STUNDEN' %}
+        <span class="chip">{{ z.abrechnungsmodus | status_text }}</span>{% endif %}</td></tr>
+  {% endfor %}</tbody>
+</table>
+{% endif %}
+{% endblock %}

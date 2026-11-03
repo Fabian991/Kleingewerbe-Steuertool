@@ -1,0 +1,73 @@
+{#- Eine offene Angabe aus „Angaben fehlen“ (app/logik/angaben.py) mit genau
+    den Feldern, die fehlen. Eingebunden auf /angaben und auf der Seite, zu
+    der sie gehört (Anlagen, Einnahmen, WISO-Import). ``a`` ist die Angabe,
+    ``zurueck`` die Seite, auf die das Formular danach führt. -#}
+<div class="karte angabe" id="angabe-{{ a.id }}">
+  {#- Abgewiesen: Meldung und Eingaben kommen in der Adresse zurueck (nur fuer
+      diese Karte) -- die Meldung steht hier, wohin der Sprung fuehrt. -#}
+  {% set q = request.query_params if request is defined else {} %}
+  {% set rueck = q if q.get('angabe') == a.id | string else {} %}
+  {% if rueck.get('angabe_fehler') %}
+  <div class="meldung fehler" role="alert">{{ rueck.get('angabe_fehler') }}</div>
+  {% endif %}
+  {% if a.art == 'ANLAGEGUT' %}
+  <h3>{{ a.titel }} <span class="gedaempft">Anl.-Nr. {{ a.angaben.anl_nr }}</span></h3>
+  <p class="hinweis">WISO schreibt dieses Gut ab ({% for j, c in a.afa | dictsort %}AfA {{ j }}:
+    {{ c | euro }} €{% if not loop.last %}, {% endif %}{% endfor %}), angeschafft wurde es aber
+    vor dem exportierten Jahr — der Export nennt Anschaffungstag, Anschaffungskosten und
+    Nutzungsdauer nicht. Bis sie hier stehen, rechnet das Tool <strong>keine AfA</strong>
+    dafür; EÜR und Steuerrücklage sagen das.</p>
+  <form method="post" action="/angaben/{{ a.id }}/anlagegut">
+    <input type="hidden" name="zurueck" value="{{ zurueck }}">
+    <div class="felder">
+      <label>Angeschafft am <input type="date" name="anschaffung_am" required
+        min="2000-01-01" max="{{ heute }}" value="{{ rueck.get('w_anschaffung_am', '') }}"></label>
+      <label>Anschaffungskosten brutto <small>laut Rechnung, mit Umsatzsteuer</small>
+        <input name="ak_brutto" inputmode="decimal" required placeholder="0,00"
+               value="{{ rueck.get('w_ak_brutto', '') }}"></label>
+      <label>Nutzungsdauer in Jahren <small>leer = aus der WISO-AfA ableiten (nur wenn
+        genau eine Dauer passt)</small>
+        <input type="number" name="nutzungsdauer_jahre" min="1" max="50"
+               value="{{ rueck.get('w_nutzungsdauer_jahre', '') }}"></label>
+      <label>Art
+        <select name="art">
+          <option value="BEWEGLICH">beweglich (KZ 130)</option>
+          <option value="IMMATERIELL" {% if rueck.get('w_art') == 'IMMATERIELL' %}selected{% endif %}>immateriell (KZ 131)</option>
+        </select></label>
+    </div>
+    <button type="submit">Ins Anlagenverzeichnis</button>
+  </form>
+  {% elif a.art == 'KONTO' %}
+  <h3>{{ a.titel }}</h3>
+  <p class="hinweis">{{ a.angaben.anzahl }} {% if a.angaben.anzahl == 1 %}Buchung{% else
+    %}Buchungen{% endif %} aus WISO ({{ a.angaben.cent | euro }} €) warten auf eine Kategorie.
+    Die Wahl gilt für dieses Konto auch bei jedem künftigen Import.</p>
+  <form method="post" action="/angaben/{{ a.id }}/konto" class="zeile">
+    <input type="hidden" name="zurueck" value="{{ zurueck }}">
+    <label>Kategorie
+      <select name="kategorie_id" required>
+        <option value="">— bitte wählen —</option>
+        {% for k in ausgabenkategorien %}
+          <option value="{{ k.id }}" {% if rueck.get('w_kategorie_id') == k.id | string %}selected{% endif %}>{{ k.bezeichnung }} (KZ {{ k.kennzahl }})</option>
+        {% endfor %}
+      </select></label>
+    <button type="submit">Zuordnen und übernehmen</button>
+  </form>
+  {% elif a.art == 'ZAHLER' %}
+  <h3>{{ a.titel }}</h3>
+  <p class="hinweis">{{ a.angaben.anzahl }} {% if a.angaben.anzahl == 1 %}Einnahme{% else
+    %}Einnahmen{% endif %} aus WISO ({{ a.angaben.cent | euro }} €) warten auf die Einstufung:
+    zählt der Betrag zur Kleinunternehmergrenze?</p>
+  <form method="post" action="/angaben/{{ a.id }}/zahler" class="zeile">
+    <input type="hidden" name="zurueck" value="{{ zurueck }}">
+    <label>Einstufung
+      <select name="einstufung" required>
+        <option value="">— bitte wählen —</option>
+        {% for wert, text in einstufung_texte.items() %}
+          <option value="{{ wert }}" {% if rueck.get('w_einstufung') == wert %}selected{% endif %}>{{ text }}</option>
+        {% endfor %}
+      </select></label>
+    <button type="submit">Einstufen und übernehmen</button>
+  </form>
+  {% endif %}
+</div>

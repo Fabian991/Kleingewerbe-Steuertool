@@ -1,0 +1,46 @@
+{% extends "basis.html" %}
+{% set aktiv = 'kunden' %}
+{% block titel %}Kunden importieren · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Kunden importieren</h1>
+<p class="hinweis">Viele Kunden auf einmal: Vorlage herunterladen, je Kunde eine Zeile ausfüllen,
+  hier hochladen. Vor dem Anlegen zeigt eine Vorschau für jede Zeile, was passiert —
+  angelegt wird erst, wenn du es bestätigst.</p>
+
+{% if fehler %}<div class="meldung fehler" role="alert">{{ fehler }}</div>{% endif %}
+
+<h2>1. Vorlage herunterladen</h2>
+<p><a class="knopf still" href="/kunden/import/vorlage.xlsx" download>Vorlage herunterladen
+  (Excel)</a></p>
+<p class="hinweis">Dieselben Felder wie im Formular „Neuer Kunde“, mit Auswahllisten für Land,
+  Kundentyp, Leistungsort und Gruppierung. Pflicht sind Name, Straße und Hausnummer, PLZ und Ort
+  (§ 34a Satz 1 Nr. 1 UStDV). Das Blatt „Hilfe“ erklärt jede Spalte. Die Beispielzeile
+  (Kundennummer „Beispiel“) wird nie angelegt.</p>
+
+<h2>2. Ausgefüllte Datei hochladen</h2>
+<form method="post" action="/kunden/import" enctype="multipart/form-data">
+  <label>Datei <small>Excel (.xlsx) oder CSV, höchstens {{ max_mb }} MB und {{ max_zeilen }}
+    Kunden</small>
+    <input type="file" name="datei" required accept=".xlsx,.csv"></label>
+  <div class="knopfzeile">
+    <button type="submit">Prüfen und Vorschau zeigen</button>
+    <a href="/kunden">Abbrechen</a>
+  </div>
+</form>
+
+<h2>Was der Import tut</h2>
+<ul class="hinweis">
+  <li>Vorhandene Kunden — gleiche Kundennummer oder gleiche USt-IdNr. — bleiben unverändert;
+    die Zeile wird übersprungen. Dieselbe Datei noch einmal hochzuladen ist deshalb
+    gefahrlos.</li>
+  <li>Bei gleichem Namen wie ein vorhandener Kunde fragt die Vorschau nach („trotzdem
+    anlegen“) — zwei Filialen können gleich heißen.</li>
+  <li>Fehlerhafte Zeilen werden nicht angelegt; die Vorschau nennt Spalte und Grund. Datei
+    korrigieren und erneut hochladen.</li>
+  <li>Leere Kundennummer: wird automatisch vergeben (nächste: <code>{{ naechste }}</code>).
+    Eine angegebene Nummer muss ins Format {{ format_beispiel }} passen.</li>
+  <li>Gelesen werden nur Werte. Formeln, Makros (.xlsm) und das alte .xls-Format nimmt der
+    Import nicht an. Eine CSV-Datei darf UTF-8 oder Windows-1252 sein, getrennt mit
+    Semikolon oder Komma; die erste Zeile trägt die Überschriften der Vorlage.</li>
+</ul>
+{% endblock %}

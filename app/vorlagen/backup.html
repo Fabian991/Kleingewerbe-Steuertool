@@ -1,0 +1,127 @@
+{% extends "basis.html" %}
+{% set aktiv = 'backup' %}
+{% block titel %}Sicherung · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Sicherung</h1>
+<p class="hinweis">Datenbank und Belege in einem Archiv. Die Datenbank wird dabei
+  konsistent herausgeschrieben, nicht kopiert — eine Dateikopie bei laufendem Programm
+  kann eine unbrauchbare Datenbank ergeben.</p>
+
+{% if fehler %}<div class="meldung fehler">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg">{{ erfolg }}</div>{% endif %}
+
+{% if not letztes_geprueft %}
+<div class="meldung warn">
+  <strong>Es gibt noch keine geprüfte Sicherung.</strong>
+  Bei lokalem Betrieb kostet ein Plattendefekt die komplette Buchführung, und die
+  Aufbewahrungsfrist läuft bis zu zehn Jahre.
+</div>
+{% endif %}
+
+<form method="post" action="/backup">
+  <p class="hinweis">Ziel: <code>{{ ziel }}</code></p>
+  <button type="submit">Sicherung jetzt erzeugen</button>
+</form>
+
+<h2>Nicht von diesem Werkzeug abhängig sein</h2>
+<p class="hinweis">Das Archiv enthält drei Dinge, die sich gegenseitig stützen: die
+  Datenbank, die Belege und Rechnungs-PDF im Original — und eine
+  <strong>Tabellenkalkulation mit allen Daten im Klartext</strong>. Die
+  SQLite-Datei nützt nur, solange es ein Programm gibt, das sie öffnet; die
+  Tabelle öffnet jeder Rechner. Die Aufbewahrungsfrist läuft gestaffelt
+  (§ 147 Abs. 3 AO): zehn Jahre für die Aufzeichnungen, acht für die Belege.
+  Hier gilt die längere, und das ist lang genug, dass dieser Unterschied
+  zählt.</p>
+<p><a class="knopf" href="/backup/excel">Tabelle einzeln herunterladen (.xlsx)</a></p>
+
+<h2>Zielordner</h2>
+<form method="post" action="/backup/ziel">
+  <div class="felder">
+    <label>Erstes Ziel <small>leer = <code>backup/</code> im Datenordner</small>
+      <input name="pfad" value="{{ eigenes_ziel or '' }}"
+             placeholder="~/Library/Application Support/Steuer-Tool/backup"></label>
+    <label>Zweites Ziel <small>optional, etwa eine externe Platte</small>
+      <input name="zweitziel" value="{{ zweitziel or '' }}"
+             placeholder="/Volumes/Backup/Steuer-Tool"></label>
+  </div>
+  <p class="hinweis">Eine Sicherung auf derselben Platte wie die Daten schützt gegen
+    Versehen, nicht gegen einen Plattendefekt. Ist ein zweites Ziel eingestellt, legt
+    jede Sicherung dort eine Kopie ab. Hängt das Laufwerk gerade nicht dran, läuft die
+    Sicherung trotzdem durch und sagt es — eine Sicherung, die wegen der fehlenden
+    externen Platte ganz ausfällt, wäre schlechter als eine, die nur einmal liegt.</p>
+  <button type="submit">Ziele speichern</button>
+</form>
+
+<h2>Was bei zehn Jahren Aufbewahrung trägt</h2>
+<p class="hinweis">§ 147 Abs. 3 AO staffelt: <strong>zehn Jahre</strong> für Bücher und
+  Aufzeichnungen, <strong>acht</strong> für Buchungsbelege wie Rechnungen und Belege,
+  sechs für den Rest. Dieses Archiv enthält beides, also gilt die längere — und sie
+  läuft nicht ab, solange die Festsetzungsfrist der Steuer offen ist. Also über
+  mehrere Rechner hinweg. Drei Ebenen, die sich nicht ersetzen:</p>
+<ol class="hinweis">
+  <li><strong>Time Machine auf eine externe Platte.</strong> Läuft von selbst und holt
+    auch die laufende Datenbank zurück. Deckt den Normalfall: Rechner defekt, Datei
+    versehentlich gelöscht. <em>Nicht</em> ausreichend allein — die Platte liegt neben
+    dem Rechner.</li>
+  <li><strong>Diese Sicherung auf ein zweites, getrenntes Laufwerk.</strong> Das ZIP ist
+    in sich geschlossen und braucht diese Anwendung nicht: Datenbank, Belege und das
+    Protokoll als Klartext — der Spiegel im Archiv reicht bis unmittelbar vor die
+    Sicherung selbst; der Sicherungsvorgang steht erst im Spiegel auf der Platte.
+    Zwei Platten im Wechsel, eine davon außer Haus.</li>
+  <li><strong>Eine Kopie an einem anderen Ort.</strong> Gegen Brand, Wasser, Einbruch.
+    Das ZIP darf dafür in einen Cloud-Speicher — es ist eine abgeschlossene Datei, keine
+    laufende Datenbank. <strong>Die laufende <code>steuer.sqlite</code> gehört
+    ausdrücklich nicht in iCloud Drive, Dropbox oder OneDrive:</strong> defektes Locking
+    auf Netzwerk-Dateisystemen und das Ausdünnen zu Platzhaltern durch „Mac-Speicher
+    optimieren" sind bekannte Wege zu einer beschädigten SQLite-Datei.</li>
+</ol>
+<p class="hinweis">Und die eigentliche Regel: <strong>eine Sicherung, die nie
+  zurückgespielt wurde, ist keine.</strong> Einmal im Jahr eine prüfen — der Knopf unten
+  macht genau das, nur ohne den laufenden Bestand anzufassen.</p>
+
+<h2>Vorhandene Sicherungen</h2>
+{% if sicherungen %}
+<table>
+  <thead><tr><th>Datei</th><th>Erzeugt (Ortszeit)</th><th class="zahl">Größe</th>
+    <th>Geprüft</th><th></th></tr></thead>
+  <tbody>
+  {% for s in sicherungen %}
+    <tr>
+      <td class="mono">{{ s.name }}
+        {%- if not s.vorhanden %}<br><span class="chip ueberfaellig">Datei fehlt</span>{% endif %}</td>
+      <td class="mono">{{ s.zeitpunkt | zeit_lokal }}</td>
+      <td class="zahl mono">{{ s.groesse | dateigroesse }}</td>
+      <td>{% if s.geprueft %}<span class="chip bezahlt">geprüft</span>
+        {%- else %}<span class="chip gestellt">ungeprüft</span>{% endif %}</td>
+      <td class="aktionen">
+        {% if s.vorhanden %}
+        <form method="post" action="/backup/{{ s.id }}/pruefen" class="inline">
+          <button type="submit" class="still">Prüfen</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hinweis">Prüfen heißt: Prüfsumme vergleichen, Archiv entpacken, die Datenbank
+  darin öffnen und nachzählen. Ob ein Archiv lesbar ist, weiß man erst, wenn man es
+  geöffnet hat — und dann ist es zu spät, wenn nicht.</p>
+{% else %}
+<p class="leer">Noch keine Sicherung erzeugt.</p>
+{% endif %}
+
+<h2>Wiederherstellen</h2>
+<p class="hinweis">Bewusst ohne Knopf: eine Wiederherstellung überschreibt den laufenden
+  Bestand, und das soll niemand aus Versehen tun.</p>
+<ol class="hinweis">
+  <li>Anwendung beenden.</li>
+  <li>Datenordner <code>{{ datenordner }}</code> umbenennen — nicht löschen.</li>
+  <li>An seiner Stelle einen leeren Ordner mit demselben Namen anlegen und das Archiv
+    <strong>dort hinein</strong> entpacken. Das Archiv ist der Datenordner:
+    <code>steuer.sqlite</code>, <code>belege/</code>, <code>ausgangsrechnungen/</code> und
+    <code>journal.log</code> liegen danach genau dort, wo die Anwendung sie erwartet.</li>
+  <li>Anwendung starten und im Dashboard prüfen, ob die letzte Rechnungsnummer stimmt.
+    Belege und Rechnungs-PDF sind in der Datenbank relativ zum Datenordner vermerkt —
+    sie funktionieren auch auf einem anderen Rechner oder unter anderem Benutzernamen.</li>
+</ol>
+{% endblock %}

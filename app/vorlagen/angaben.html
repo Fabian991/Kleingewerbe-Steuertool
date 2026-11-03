@@ -1,0 +1,24 @@
+{% extends "basis.html" %}
+{% set aktiv = 'start' %}
+{% block titel %}Angaben fehlen · Steuer-Tool{% endblock %}
+{% block inhalt %}
+<h1>Angaben fehlen</h1>
+<p class="hinweis">Was ein Import nicht weiß und das Tool zum Rechnen braucht — je Eintrag
+  genau die Felder, die fehlen. Ausgefüllt rechnet bzw. bucht das Tool weiter.</p>
+
+{% if fehler %}<div class="meldung fehler" role="alert">{{ fehler }}</div>{% endif %}
+{% if erfolg %}<div class="meldung erfolg" role="status">{{ erfolg }}</div>{% endif %}
+{% if warnung %}<div class="meldung warn" role="status">{{ warnung }}</div>{% endif %}
+
+{% set zurueck = '/angaben' %}
+{% for art, text in arten.items() %}
+  {% set eintraege = angaben | selectattr('art', 'equalto', art) | list %}
+  {% if eintraege %}
+  <h2>{{ text }}</h2>
+  {% for a in eintraege %}{% include "angaben_formular.html" %}{% endfor %}
+  {% endif %}
+{% endfor %}
+{% if not angaben %}
+<p class="leer">Es fehlt nichts. <a href="/">Zur Übersicht</a></p>
+{% endif %}
+{% endblock %}
