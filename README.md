@@ -994,3 +994,13 @@ app/vorlagen/               Oberfläche und Rechnungsvorlage (Jinja2)
 
 Die rechtlichen Fundstellen stehen als Kommentar an der Stelle, an der die Regel
 durchgesetzt wird — meist in `app/schema.sql`.
+
+## Lizenz
+
+MIT, siehe `LICENSE`. Die mitgelieferten Schriften Liberation Sans stehen
+unter der SIL Open Font License 1.1 (`app/vorlagen/schriften/OFL.txt`); die
+Python-Abhängigkeiten werden beim Start installiert und tragen ihre eigenen,
+durchweg freizügigen Lizenzen (MIT, BSD, Apache 2.0, PSF).
+
+Das Werkzeug ersetzt keine steuerliche Beratung. Wer es einsetzt, bleibt für
+seine Aufzeichnungen und Erklärungen selbst verantwortlich.
